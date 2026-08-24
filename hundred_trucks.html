@@ -107,8 +107,8 @@
 
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
     /* live truck marker — halo pulses, truck body points along the heading */
-    .truck-mk { position:relative; width:34px; height:34px; display:grid; place-items:center; cursor:pointer; }
-    .truck-mk .halo { position:absolute; width:30px; height:30px; border-radius:50%; background:currentColor; animation:truckHalo 2.1s ease-out infinite; }
+    .truck-mk { position:relative; width:40px; height:30px; display:grid; place-items:center; cursor:pointer; }
+    .truck-mk .halo { position:absolute; width:26px; height:26px; border-radius:50%; background:currentColor; animation:truckHalo 2.1s ease-out infinite; }
     .truck-mk svg { position:relative; display:block; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
     .truck-mk .count { position:absolute; top:-2px; right:-2px; min-width:15px; height:15px; padding:0 3px; border-radius:8px;
       background:#1a1a2e; color:#fff; font:800 9px/15px 'Segoe UI',sans-serif; text-align:center; border:1.5px solid #fff; }
@@ -543,23 +543,29 @@ function bearingDeg(from, to) {
   return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
 }
 
-// Top-down truck, nose pointing up at 0°, rotated to face the way it is travelling.
+// Side-view truck. It stays upright and mirrors to face left or right — a side view
+// rotated to a compass bearing looks like it is driving up a wall. Headings between
+// 180° and 360° are westward, so the truck faces left.
 function truckMarkerHtml(color, heading, count) {
-  const rot = heading == null ? 0 : Math.round(heading);
+  const facingLeft = heading != null && heading > 180;
   const badge = count > 1 ? `<span class="count">${count}</span>` : '';
   return `<div class="truck-mk" style="color:${color};">
     <span class="halo"></span>
-    <svg xmlns="http://www.w3.org/2000/svg" width="23" height="30" viewBox="0 0 23 30" style="transform:rotate(${rot}deg);">
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="23" viewBox="0 0 40 26"
+         style="transform:scaleX(${facingLeft ? -1 : 1});">
+      <rect x="2.4" y="3"   width="21.6" height="15"  rx="2.6" fill="${color}" stroke="#fff" stroke-width="1.7"/>
+      <path d="M25.6 8h6.1c.5 0 .97.23 1.28.63l3.4 4.4c.21.28.33.62.33.98V16a2 2 0 0 1-2 2H25.6a1.6 1.6 0 0 1-1.6-1.6V9.6c0-.88.72-1.6 1.6-1.6z"
+            fill="${color}" stroke="#fff" stroke-width="1.7"/>
+      <path d="M27.7 10.4h3.5c.3 0 .58.14.77.38l1.9 2.45c.28.36.02.89-.44.89H27.7a.9.9 0 0 1-.9-.9v-1.92c0-.5.4-.9.9-.9z" fill="#1d2733" opacity="0.5"/>
+      <rect x="5.2" y="9.6" width="16" height="1.5" rx="0.75" fill="#fff" opacity="0.3"/>
       <g fill="#2f3540">
-        <rect x="0.9"  y="11.6" width="2.9" height="5.4" rx="1.4"/>
-        <rect x="19.2" y="11.6" width="2.9" height="5.4" rx="1.4"/>
-        <rect x="0.9"  y="21"   width="2.9" height="5.4" rx="1.4"/>
-        <rect x="19.2" y="21"   width="2.9" height="5.4" rx="1.4"/>
+        <circle cx="10.4" cy="19.4" r="3.6" stroke="#fff" stroke-width="1.4"/>
+        <circle cx="30.4" cy="19.4" r="3.6" stroke="#fff" stroke-width="1.4"/>
       </g>
-      <rect x="2.9" y="10.4" width="17.2" height="18.7" rx="2.4" fill="${color}" stroke="#fff" stroke-width="1.6"/>
-      <rect x="5.3" y="1.1"  width="12.4" height="10.6" rx="3.1" fill="${color}" stroke="#fff" stroke-width="1.6"/>
-      <path d="M7.5 3.5h8a.9.9 0 0 1 .86.65l.52 1.95a.6.6 0 0 1-.58.75H6.7a.6.6 0 0 1-.58-.75l.52-1.95a.9.9 0 0 1 .86-.65z" fill="#1d2733" opacity="0.5"/>
-      <rect x="6.1" y="16.6" width="10.8" height="1.3" rx="0.65" fill="#fff" opacity="0.28"/>
+      <g fill="#8e9aa6">
+        <circle cx="10.4" cy="19.4" r="1.3"/>
+        <circle cx="30.4" cy="19.4" r="1.3"/>
+      </g>
     </svg>
     ${badge}
   </div>`;
@@ -1945,8 +1951,8 @@ async function initLiveRoutes() {
         <span style="color:#444;">Starting point</span>
       </div>
       <div style="display:flex;align-items:center;gap:7px;">
-        <svg width="16" height="20" viewBox="0 0 23 29"><g fill="#39404d"><rect x="0.6" y="9" width="3.4" height="5.6" rx="1.6"/><rect x="19" y="9" width="3.4" height="5.6" rx="1.6"/><rect x="0.6" y="18" width="3.4" height="5.6" rx="1.6"/><rect x="19" y="18" width="3.4" height="5.6" rx="1.6"/></g><rect x="2.6" y="1" width="17.8" height="27" rx="4.6" fill="#2f6fd4" stroke="#fff" stroke-width="1.8"/><path d="M6 5.4h11a1 1 0 0 1 .95.69l.9 2.7A.7.7 0 0 1 18.2 9.7H5.8a.7.7 0 0 1-.66-.92l.9-2.7A1 1 0 0 1 6 5.4z" fill="#fff" opacity="0.92"/></svg>
-        <span style="color:#444;">Truck now — points the way it is going</span>
+        <svg width="24" height="16" viewBox="0 0 40 26"><rect x="2.4" y="3" width="21.6" height="15" rx="2.6" fill="#2f6fd4" stroke="#fff" stroke-width="1.7"/><path d="M25.6 8h6.1c.5 0 .97.23 1.28.63l3.4 4.4c.21.28.33.62.33.98V16a2 2 0 0 1-2 2H25.6a1.6 1.6 0 0 1-1.6-1.6V9.6c0-.88.72-1.6 1.6-1.6z" fill="#2f6fd4" stroke="#fff" stroke-width="1.7"/><g fill="#2f3540"><circle cx="10.4" cy="19.4" r="3.6" stroke="#fff" stroke-width="1.4"/><circle cx="30.4" cy="19.4" r="3.6" stroke="#fff" stroke-width="1.4"/></g></svg>
+        <span style="color:#444;">Truck now — faces its direction of travel</span>
       </div>
       <div style="display:flex;align-items:center;gap:7px;">
         <svg width="18" height="22" viewBox="0 0 18 22"><circle cx="9" cy="9" r="8" fill="#e05c2e" stroke="#fff" stroke-width="2"/><line x1="9" y1="17" x2="9" y2="22" stroke="#222" stroke-width="2.5" stroke-linecap="round"/></svg>
@@ -2428,7 +2434,7 @@ function lrDrawMarkers(truckData, filterVno) {
       icon: L.divIcon({
         className: '',
         html: truckMarkerHtml(lead.color, lead.heading, group.trucks.length),
-        iconAnchor: [17, 17], iconSize: [34, 34],
+        iconAnchor: [20, 15], iconSize: [40, 30],
       })
     }).addTo(liveRoutesMap);
     if (group.trucks.length === 1) {
@@ -2496,8 +2502,8 @@ async function initCreditTrips() {
         <span style="color:#444;">Starting point</span>
       </div>
       <div style="display:flex;align-items:center;gap:7px;">
-        <svg width="16" height="20" viewBox="0 0 23 29"><g fill="#39404d"><rect x="0.6" y="9" width="3.4" height="5.6" rx="1.6"/><rect x="19" y="9" width="3.4" height="5.6" rx="1.6"/><rect x="0.6" y="18" width="3.4" height="5.6" rx="1.6"/><rect x="19" y="18" width="3.4" height="5.6" rx="1.6"/></g><rect x="2.6" y="1" width="17.8" height="27" rx="4.6" fill="#2f6fd4" stroke="#fff" stroke-width="1.8"/><path d="M6 5.4h11a1 1 0 0 1 .95.69l.9 2.7A.7.7 0 0 1 18.2 9.7H5.8a.7.7 0 0 1-.66-.92l.9-2.7A1 1 0 0 1 6 5.4z" fill="#fff" opacity="0.92"/></svg>
-        <span style="color:#444;">Truck now — points the way it is going</span>
+        <svg width="24" height="16" viewBox="0 0 40 26"><rect x="2.4" y="3" width="21.6" height="15" rx="2.6" fill="#2f6fd4" stroke="#fff" stroke-width="1.7"/><path d="M25.6 8h6.1c.5 0 .97.23 1.28.63l3.4 4.4c.21.28.33.62.33.98V16a2 2 0 0 1-2 2H25.6a1.6 1.6 0 0 1-1.6-1.6V9.6c0-.88.72-1.6 1.6-1.6z" fill="#2f6fd4" stroke="#fff" stroke-width="1.7"/><g fill="#2f3540"><circle cx="10.4" cy="19.4" r="3.6" stroke="#fff" stroke-width="1.4"/><circle cx="30.4" cy="19.4" r="3.6" stroke="#fff" stroke-width="1.4"/></g></svg>
+        <span style="color:#444;">Truck now — faces its direction of travel</span>
       </div>
       <div style="display:flex;align-items:center;gap:7px;">
         <svg width="18" height="22" viewBox="0 0 18 22"><circle cx="9" cy="9" r="8" fill="#e05c2e" stroke="#fff" stroke-width="2"/><line x1="9" y1="17" x2="9" y2="22" stroke="#222" stroke-width="2.5" stroke-linecap="round"/></svg>
@@ -2846,7 +2852,7 @@ function ctDrawMarkers(truckData, filterVno) {
     const ctDiamondMarker = L.marker(group.coord, {
       zIndexOffset: 1000,
       icon: L.divIcon({ className:'', html: truckMarkerHtml(ctLead.color, ctLead.heading, group.trucks.length),
-                        iconAnchor:[17,17], iconSize:[34,34] })
+                        iconAnchor:[20,15], iconSize:[40,30] })
     }).addTo(ctMap);
     if (group.trucks.length === 1) {
       ctDiamondMarker.on('click', () => ctFilterTruck(group.trucks[0].trip.truck_no));
