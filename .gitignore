@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Local environment — never commit DATABASE_URL, TOKEN_SECRET, TELENITY_KEY
+.env
+.env.*
+!.env.example
+
+# Claude Code local settings (contains machine-specific absolute paths)
+.claude/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
