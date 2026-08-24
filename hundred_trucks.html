@@ -550,18 +550,37 @@ function shadeHex(hex, pct) {
   return '#' + [ch(16), ch(8), ch(0)].map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
-// Side-view truck. It stays upright and mirrors to face left or right — a side view
-// rotated to a compass bearing looks like it is driving up a wall. Headings between
-// 180° and 360° are westward, so the truck faces left. The cab takes the truck's own
-// colour and the bed a darker shade of it, so the marker matches its route line.
+// Turn a compass bearing into a CSS transform for a side-view sprite drawn facing right.
+// The nose follows the heading, with two corrections that keep it looking like a truck:
+//   · westward headings would come out upside down under a plain rotation, so they are
+//     mirrored horizontally and rotated by the supplementary angle instead — nose still
+//     on the heading, wheels still underneath;
+//   · the tilt is capped, because at due north or south an uncapped rotation stands the
+//     truck on end. 65° stays clear of vertical while keeping all eight compass
+//     directions visually distinct (a 45° cap would make north and north-east identical).
+const MAX_TILT = 65;
+function headingTransform(heading) {
+  if (heading == null) return '';
+  const th = heading * Math.PI / 180;
+  // screen angle of travel, clockwise from "pointing right" (screen y grows downward)
+  const phi = Math.atan2(-Math.cos(th), Math.sin(th)) * 180 / Math.PI;
+  const tilt = v => Math.max(-MAX_TILT, Math.min(MAX_TILT, v)).toFixed(1);
+  if (Math.abs(phi) <= 90) return `rotate(${tilt(phi)}deg)`;
+  let r = 180 - phi;
+  if (r > 180) r -= 360;
+  if (r < -180) r += 360;
+  return `scaleX(-1) rotate(${tilt(r)}deg)`;   // rotate first, then mirror
+}
+
+// Side-view truck, nose following the direction of travel. The cab takes the truck's
+// own colour and the bed a darker shade of it, so the marker matches its route line.
 function truckMarkerHtml(color, heading, count) {
-  const facingLeft = heading != null && heading > 180;
   const badge = count > 1 ? `<span class="count">${count}</span>` : '';
   const bed = shadeHex(color, -0.22);
   return `<div class="truck-mk" style="color:${color};">
     <span class="halo"></span>
     <svg xmlns="http://www.w3.org/2000/svg" width="38" height="25" viewBox="0 16 130 87"
-         style="transform:scaleX(${facingLeft ? -1 : 1});">
+         style="transform:${headingTransform(heading)};">
       <g fill="#ffffff" stroke="#ffffff" stroke-width="14" stroke-linejoin="round">
         <rect x="8" y="68" width="12" height="12" rx="4"/>
         <rect x="110" y="68" width="12" height="12" rx="4"/>
