@@ -42,6 +42,13 @@
       100% { box-shadow: 0 0 0 0 rgba(234,179,8,0); }
     }
     .mldot    { width: 20px; height: 20px; border-radius: 50%; background: var(--ml-lemon); border: 3px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.3); animation: mlpulse 2s infinite; }
+
+    /* live truck marker — halo pulses, truck tilts along the direction of travel */
+    .truck-mk { position:relative; width:42px; height:32px; display:grid; place-items:center; }
+    .truck-mk .halo { position:absolute; width:26px; height:26px; border-radius:50%; background:var(--ml-line-gold); animation:truckHalo 2.1s ease-out infinite; }
+    .truck-mk svg { position:relative; display:block; filter:drop-shadow(0 1px 2px rgba(0,0,0,0.35)); }
+    @keyframes truckHalo { 0%{transform:scale(0.55);opacity:0.45} 70%{transform:scale(1.5);opacity:0} 100%{transform:scale(1.5);opacity:0} }
+    @media (prefers-reduced-motion: reduce) { .truck-mk .halo { animation:none; opacity:0.28; } }
     .mlorigin { width: 16px; height: 16px; border-radius: 50%; background: var(--ml-olive); border: 3px solid #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.25); }
     .mldest   { width: 18px; height: 18px; border-radius: 50%; background: var(--ml-panel); border: 4px solid var(--ml-ink); box-shadow: 0 2px 5px rgba(0,0,0,0.25); }
 
@@ -248,6 +255,58 @@
 
     function istDate(dt) {
       return new Date(dt.replace(' ', 'T') + '+05:30');
+    }
+
+    // ── Live truck marker (mirrors truckMarkerHtml in hundred_trucks.html) ──
+    // Compass bearing, 0 = north.
+    function bearingDeg(from, to) {
+      if (!from || !to) return null;
+      const dy = to[0] - from[0];
+      const dx = (to[1] - from[1]) * Math.cos(to[0] * Math.PI / 180);
+      if (!dx && !dy) return null;
+      return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+    }
+    // Nose follows the heading. Westward headings are mirrored rather than rotated past
+    // upside down, and the tilt is capped so the truck never stands on end.
+    const MAX_TILT = 65;
+    function headingTransform(heading) {
+      if (heading == null) return '';
+      const th = heading * Math.PI / 180;
+      const phi = Math.atan2(-Math.cos(th), Math.sin(th)) * 180 / Math.PI;
+      const tilt = v => Math.max(-MAX_TILT, Math.min(MAX_TILT, v)).toFixed(1);
+      if (Math.abs(phi) <= 90) return `rotate(${tilt(phi)}deg)`;
+      let r = 180 - phi;
+      if (r > 180) r -= 360;
+      if (r < -180) r += 360;
+      return `scaleX(-1) rotate(${tilt(r)}deg)`;
+    }
+    function truckMarkerHtml(heading) {
+      return `<div class="truck-mk">
+        <span class="halo"></span>
+        <svg xmlns="http://www.w3.org/2000/svg" width="38" height="25" viewBox="0 16 130 87"
+             style="transform:${headingTransform(heading)};">
+          <g fill="#ffffff" stroke="#ffffff" stroke-width="14" stroke-linejoin="round">
+            <rect x="8" y="68" width="12" height="12" rx="4"/>
+            <rect x="110" y="68" width="12" height="12" rx="4"/>
+            <rect x="15" y="45" width="60" height="30" rx="6"/>
+            <rect x="70" y="25" width="45" height="50" rx="10"/>
+            <rect x="15" y="65" width="100" height="12" rx="4"/>
+            <circle cx="35" cy="80" r="14"/>
+            <circle cx="95" cy="80" r="14"/>
+          </g>
+          <rect x="8" y="68" width="12" height="12" rx="4" fill="#95A5A6"/>
+          <rect x="110" y="68" width="12" height="12" rx="4" fill="#95A5A6"/>
+          <rect x="15" y="45" width="58" height="32" rx="4" fill="#AF8300"/>
+          <rect x="70" y="25" width="45" height="52" rx="10" fill="#E0A800"/>
+          <rect x="82" y="32" width="25" height="20" rx="6" fill="#1A252F"/>
+          <rect x="82" y="58" width="10" height="4" rx="2" fill="#000" opacity="0.32"/>
+          <rect x="108" y="55" width="8" height="10" rx="4" fill="#FFFBE6"/>
+          <rect x="13" y="52" width="6" height="12" rx="3" fill="#E74C3C"/>
+          <rect x="15" y="66" width="100" height="12" rx="4" fill="#34495E"/>
+          <circle cx="35" cy="80" r="14" fill="#1A252F"/><circle cx="35" cy="80" r="6" fill="#BDC3C7"/>
+          <circle cx="95" cy="80" r="14" fill="#1A252F"/><circle cx="95" cy="80" r="6" fill="#BDC3C7"/>
+        </svg>
+      </div>`;
     }
 
     // Comparable timestamp — crossings and sim pings can serialize differently
@@ -540,7 +599,24 @@
         const popup = simIsFresher
           ? `<b>📍 Current Location</b><br>Driver SIM${lastCross ? ' · past ' + lastCross.plaza : ''}<br><span style="color:#888;font-size:11px;">${fmtTime(lastSim.pinged_at)}${lastSim.accuracy_m ? ` · ±${lastSim.accuracy_m}m` : ''}</span>`
           : `<b>📍 Current Location</b><br>${lastCross.plaza}<br><span style="color:#888;font-size:11px;">${fmtTime(lastCross.crossed_at)}</span>`;
-        L.marker(currentCoord, { icon: icon('mldot', 20) }).addTo(map).bindPopup(popup);
+
+        // point the truck along the last leg it actually travelled
+        let heading = null;
+        if (simIsFresher && simPings.length >= 2) {
+          const p = simPings[simPings.length - 2];
+          heading = bearingDeg([p.lat, p.lng], currentCoord);
+        } else if (simIsFresher && lastCross) {
+          heading = bearingDeg([lastCross.lat, lastCross.lng], currentCoord);
+        } else if (crossings.length >= 2) {
+          const p = crossings[crossings.length - 2];
+          heading = bearingDeg([p.lat, p.lng], currentCoord);
+        }
+        if (heading == null && dropGeo) heading = bearingDeg(currentCoord, [dropGeo.lat, dropGeo.lng]);
+
+        L.marker(currentCoord, {
+          zIndexOffset: 1000,
+          icon: L.divIcon({ className: '', html: truckMarkerHtml(heading), iconAnchor: [21, 16], iconSize: [42, 32] })
+        }).addTo(map).bindPopup(popup);
       }
 
       // Fit bounds
