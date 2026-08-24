@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="How driver SIM tracking works alongside FASTag tolls, what changed in the code, and how to put it live.">
+<title>SIM Lead, Toll Confirm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --ground:      #ECE4D6;
+  --shell:       #FBF6EE;
+  --panel:       #FFFCF7;
+  --ink:         #2A211C;
+  --text:        #3A2C24;
+  --muted:       #6B5748;
+  --rule:        #DED0BA;
+  --rule-soft:   #E9DECB;
+  --gold:        #E0A800;
+  --gold-deep:   #A87C00;
+  --olive:       #5C8A32;
+  --terra:       #C0492D;
+  --code-bg:     #F3EADA;
+  --shadow:      0 24px 48px -30px rgba(58,44,36,0.45);
+  --display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --body:    'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --mono:    'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:    #070B10;
+    --shell:     #0E141B;
+    --panel:     #121A22;
+    --ink:       #EAF1F6;
+    --text:      #CFD9E1;
+    --muted:     #8B9CA9;
+    --rule:      #23303B;
+    --rule-soft: #1B242D;
+    --gold:      #C6F135;
+    --gold-deep: #A9D42B;
+    --olive:     #5EEAD4;
+    --terra:     #FF5C5C;
+    --code-bg:   #0B1218;
+    --shadow:    0 26px 56px -30px rgba(0,0,0,0.8);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:    #070B10;
+  --shell:     #0E141B;
+  --panel:     #121A22;
+  --ink:       #EAF1F6;
+  --text:      #CFD9E1;
+  --muted:     #8B9CA9;
+  --rule:      #23303B;
+  --rule-soft: #1B242D;
+  --gold:      #C6F135;
+  --gold-deep: #A9D42B;
+  --olive:     #5EEAD4;
+  --terra:     #FF5C5C;
+  --code-bg:   #0B1218;
+  --shadow:    0 26px 56px -30px rgba(0,0,0,0.8);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.65;
+  margin: 0;
+  padding: 40px 20px 96px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sheet {
+  max-width: 780px;
+  margin: 0 auto;
+  background: var(--shell);
+  border: 1px solid var(--rule);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  padding: 52px 56px 60px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 18px;
+}
+
+h1 {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: clamp(34px, 6vw, 50px);
+  line-height: 1.04;
+  letter-spacing: -0.025em;
+  color: var(--ink);
+  text-wrap: balance;
+  margin: 0 0 18px;
+}
+
+.standfirst {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--text);
+  max-width: 62ch;
+  margin: 0;
+}
+
+h2 {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 23px;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  text-wrap: balance;
+  margin: 0 0 4px;
+}
+
+h3 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--ink);
+  margin: 0 0 6px;
+}
+
+p { margin: 0 0 14px; max-width: 66ch; }
+p:last-child { margin-bottom: 0; }
+
+section {
+  margin-top: 44px;
+  padding-top: 30px;
+  border-top: 1px solid var(--rule);
+}
+
+section > h2 + .sub {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+
+code, .m {
+  font-family: var(--mono);
+  font-size: 0.87em;
+  background: var(--code-bg);
+  border: 1px solid var(--rule-soft);
+  border-radius: 5px;
+  padding: 1.5px 5px;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+pre {
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.7;
+  background: var(--code-bg);
+  border: 1px solid var(--rule-soft);
+  border-radius: 12px;
+  padding: 16px 18px;
+  overflow-x: auto;
+  margin: 0 0 14px;
+  color: var(--ink);
+}
+pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+/* ── hero diagram ───────────────────────────────── */
+.diagram {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 16px;
+  padding: 26px 24px 20px;
+  margin: 34px 0 0;
+  overflow-x: auto;
+}
+.diagram svg { display: block; width: 100%; min-width: 460px; height: auto; }
+.dg-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  fill: var(--muted);
+}
+.dg-strong { fill: var(--ink); font-family: var(--body); font-size: 12.5px; font-weight: 700; }
+/* SVG paint must come from CSS rules — var() is not valid in presentation attributes */
+.dg-solid { fill: none; stroke: var(--gold); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+.dg-dot   { fill: none; stroke: var(--gold); stroke-width: 4; stroke-linecap: round; stroke-dasharray: 2 8; }
+.dg-node  { fill: var(--panel); stroke: var(--gold); stroke-width: 2.5; }
+.dg-last  { fill: var(--gold); stroke: var(--panel); stroke-width: 2.5; }
+.dg-now   { fill: var(--gold); stroke: var(--panel); stroke-width: 3; }
+.dg-tick  { stroke: var(--rule); stroke-width: 1; }
+
+/* ── manifest rows ──────────────────────────────── */
+.ledger { display: flex; flex-direction: column; gap: 0; }
+.row {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 20px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--rule-soft);
+  align-items: start;
+}
+.row:first-child { border-top: 1px solid var(--rule-soft); }
+.row .file {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--gold-deep);
+  font-weight: 500;
+  word-break: break-word;
+}
+.row .what { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.row .what strong { color: var(--ink); font-weight: 700; }
+
+.tag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  margin-left: 8px;
+  vertical-align: 2px;
+}
+.tag.new  { color: var(--olive); }
+.tag.fix  { color: var(--terra); }
+
+/* ── key/value table ────────────────────────────── */
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 440px; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+th {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 400;
+  border-bottom-color: var(--rule);
+}
+td:first-child { font-family: var(--mono); font-size: 12.5px; color: var(--gold-deep); white-space: nowrap; padding-right: 22px; }
+td.wrap:first-child { white-space: normal; }
+
+/* ── numbered runbook ───────────────────────────── */
+ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 22px; }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 16px; }
+ol.steps > li::before {
+  content: counter(s);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--gold-deep);
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--panel);
+}
+ol.steps .body > p:first-child { margin-top: 3px; }
+
+ul.plain { margin: 0; padding-left: 20px; }
+ul.plain li { margin-bottom: 9px; max-width: 64ch; }
+ul.plain li:last-child { margin-bottom: 0; }
+
+.note {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--gold);
+  border-radius: 0 12px 12px 0;
+  padding: 16px 20px;
+  margin: 22px 0 0;
+}
+.note p { font-size: 14.5px; margin-bottom: 8px; }
+.note p:last-child { margin-bottom: 0; }
+.note .h { font-family: var(--display); font-weight: 700; color: var(--ink); font-size: 15px; }
+
+footer {
+  margin-top: 46px;
+  padding-top: 22px;
+  border-top: 1px solid var(--rule);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+a { color: var(--gold-deep); text-underline-offset: 2px; }
+a:focus-visible, li:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 3px; }
+
+@media (max-width: 620px) {
+  .sheet { padding: 34px 24px 40px; border-radius: 16px; }
+  .row { grid-template-columns: 1fr; gap: 6px; }
+  body { padding: 18px 12px 60px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <p class="eyebrow">MirchiLime Connect · Change record</p>
+  <h1>SIM lead,<br>toll confirm.</h1>
+  <p class="standfirst">
+    Trucks are now tracked from two independent sources. The driver's SIM reports where
+    the truck has got to; a FASTag toll crossing later confirms it actually went there.
+    The maps draw the two differently, so you can always tell a live guess from a
+    confirmed fact.
+  </p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 620 150" role="img" aria-label="A route drawn as a solid line through three toll plazas, then continuing as a dotted line to the truck's current position.">
+      <!-- confirmed: solid -->
+      <path class="dg-solid" d="M 40 95 L 130 78 L 245 84 L 350 62"/>
+      <!-- leading: dotted -->
+      <path class="dg-dot"   d="M 350 62 L 455 44 L 560 34"/>
+
+      <!-- toll plazas -->
+      <circle class="dg-node" cx="40"  cy="95" r="5.5"/>
+      <circle class="dg-node" cx="130" cy="78" r="5.5"/>
+      <circle class="dg-node" cx="245" cy="84" r="5.5"/>
+      <circle class="dg-last" cx="350" cy="62" r="7"/>
+      <!-- current position -->
+      <circle class="dg-now"  cx="560" cy="34" r="8"/>
+
+      <text class="dg-strong" x="26"  y="126">Origin</text>
+      <text class="dg-label"  x="140" y="126">Toll crossings</text>
+      <text class="dg-strong" x="300" y="40">Last toll</text>
+      <text class="dg-label"  x="416" y="80">SIM pings</text>
+      <text class="dg-strong" x="536" y="118">Now</text>
+
+      <line class="dg-tick" x1="350" y1="73" x2="350" y2="100"/>
+      <line class="dg-tick" x1="560" y1="46" x2="560" y2="102"/>
+    </svg>
+  </div>
+
+  <section>
+    <h2>The rule</h2>
+    <p class="sub">How to read any map in the system</p>
+    <p>
+      A <strong>solid line</strong> is the route confirmed by toll crossings — the truck
+      demonstrably passed those plazas. A <strong>dotted line</strong> is the driver's SIM
+      leading ahead of that confirmation. Where a toll later confirms a stretch the SIM
+      already covered, the solid line simply paints over the dotted one, which is exactly
+      right: confirmation replaces the guess.
+    </p>
+    <p>
+      For the single <strong>current position</strong> marker, the fresher of the two
+      readings wins. That is the real gain here — a toll fix can be six hours and 200 km
+      stale, while a SIM fix is at most an hour old. When the SIM is the fresher source,
+      the label says <span class="m">via driver SIM</span> so nobody mistakes it for a
+      confirmed crossing.
+    </p>
+  </section>
+
+  <section>
+    <h2>What changed</h2>
+    <p class="sub">One new file · five modified</p>
+    <div class="ledger">
+      <div class="row">
+        <div class="file">sim_location.py <span class="tag new">new</span></div>
+        <p class="what">The whole SIM subsystem in one place: the <strong>Telenity client</strong>,
+        a realistic <strong>mock</strong> for use before credentials arrive, both database tables,
+        and the poller.</p>
+      </div>
+      <div class="row">
+        <div class="file">wsgi.py</div>
+        <p class="what">Four new endpoints, the hourly <strong>ping_sims</strong> job, and SIM data
+        added to the truck-detail and public-tracking responses.</p>
+      </div>
+      <div class="row">
+        <div class="file">hundred_trucks.html</div>
+        <p class="what">Dual lines in <strong>Live Routes</strong> and the <strong>Journey Timeline</strong>,
+        a 📶 badge on tracked trucks, and the <strong>＋ Add driver SIM</strong> control.</p>
+      </div>
+      <div class="row">
+        <div class="file">track.html</div>
+        <p class="what">Dual lines on the customer page, plus <strong>Call driver</strong> and
+        <strong>WhatsApp</strong> buttons that now carry the real number instead of a placeholder.</p>
+      </div>
+      <div class="row">
+        <div class="file">server.py</div>
+        <p class="what">The same endpoints for local development. Also gained
+        <span class="m">/api/hundred-truck-positions</span>, which had only ever existed in
+        production — without it the Live Routes tab could never load locally. <span class="tag fix">fix</span></p>
+      </div>
+      <div class="row">
+        <div class="file">test_backend.py</div>
+        <p class="what">A SIM section covering assignment, polling, the trail reaching both the
+        dashboard and public link, and cleanup.</p>
+      </div>
+    </div>
+    <div class="note">
+      <p class="h">Two bugs fixed in passing</p>
+      <p>The Journey Timeline was drawing its two lines in the opposite order to the other
+      maps, so one line buried the other. And in Live Routes, a slow road-lookup could
+      finish after you had already clicked a different truck, painting a stale route onto
+      the new map.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>New moving parts</h2>
+    <p class="sub">Tables · endpoints · schedule</p>
+
+    <h3>Database</h3>
+    <p>Both tables are created automatically on first start. No migration to run.</p>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Table</th><th>Holds</th></tr>
+        <tr><td>truck_sims</td><td>Which SIM belongs to which truck, with history kept when a driver changes. One active SIM per truck is enforced by the database itself.</td></tr>
+        <tr><td>sim_pings</td><td>Every location reading, with its accuracy radius and whether it came from Telenity or the mock.</td></tr>
+      </table>
+    </div>
+
+    <h3 style="margin-top:26px;">Endpoints</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Route</th><th>Purpose</th></tr>
+        <tr><td class="wrap">/api/set-sim</td><td>Assign a driver's number to a truck, and take one reading immediately.</td></tr>
+        <tr><td class="wrap">/api/remove-sim</td><td>Stop tracking that truck's SIM. Ping history is kept.</td></tr>
+        <tr><td class="wrap">/api/ping-sims</td><td>Take readings now — all trucks, or just one.</td></tr>
+        <tr><td class="wrap">/api/sim-latest</td><td>Newest reading per truck, for the fleet overview.</td></tr>
+      </table>
+    </div>
+
+    <h3 style="margin-top:26px;">Schedule</h3>
+    <p>
+      <span class="m">ping_sims</span> runs hourly at half past, from 6&nbsp;am to 11&nbsp;pm IST —
+      deliberately offset from the FASTag ping on the hour so the two jobs never stack.
+      Change the cadence with <span class="m">SIM_PING_HOURS</span>; <span class="m">6-22/2</span>
+      makes it two-hourly.
+    </p>
+  </section>
+
+  <section>
+    <h2>Putting it live</h2>
+    <p class="sub">Deploys to Render on push</p>
+    <ol class="steps">
+      <li><div class="body">
+        <h3>Push the code</h3>
+        <p>The repository is <span class="m">avneetkaurg-ai/hundred-trucks-analysis</span> and Render
+        builds from it automatically. Nothing in this change alters the build or the start
+        command.</p>
+      </div></li>
+      <li><div class="body">
+        <h3>Leave Telenity unset for now</h3>
+        <p>With no credentials configured the system runs on mock locations, so the feature is
+        fully demonstrable the moment it deploys. Nothing else needs configuring.</p>
+      </div></li>
+      <li><div class="body">
+        <h3>Assign a driver number</h3>
+        <p>Open a truck in the dashboard and use <strong>＋ Add driver SIM</strong>. It takes one
+        reading straight away, so the truck's position updates immediately.</p>
+      </div></li>
+      <li><div class="body">
+        <h3>Share the tracking link</h3>
+        <p>Use the existing share control on the truck. It mints a link of the form
+        <span class="m">…/track.html?token=…</span> — the token stands in for the vehicle number,
+        so the registration never appears in a URL you send out. That link is the live,
+        shareable page: dual lines, current position, and the driver contact buttons.</p>
+      </div></li>
+    </ol>
+    <div class="note">
+      <p class="h">A newly added SIM shows no trail for about an hour</p>
+      <p>A line needs two readings. Until the next hourly poll you get the position marker
+      but no dotted trail — correct behaviour, though it can look like nothing happened.
+      Worth deciding whether onboarding should take a few readings up front.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>When Telenity credentials arrive</h2>
+    <p class="sub">One function, two settings</p>
+    <p>
+      Everything routes through a single function, <span class="m">_fetch_telenity()</span> in
+      <span class="m">sim_location.py</span>. It is written against the shape these APIs normally
+      take — send a number, receive a position and an accuracy radius — and marked with a
+      note to confirm against the real documentation. Rewrite that one function, set the two
+      values below, and every map switches from mock to live with no other change.
+    </p>
+    <pre><code>TELENITY_URL   the endpoint
+TELENITY_KEY   the credential</code></pre>
+    <p>
+      Every mock reading is tagged as such in the database, so at go-live the demonstration
+      data can be cleared out in a single step without touching anything real.
+    </p>
+  </section>
+
+  <section>
+    <h2>Still to decide</h2>
+    <p class="sub">Not blocking, but worth a decision</p>
+    <ul class="plain">
+      <li><strong>Driver consent.</strong> Indian telecom rules require a subscriber to opt in
+      before their location can be looked up. There is a field ready for this on each SIM
+      record, but nothing enforces it yet. This needs settling before real Telenity calls.</li>
+      <li><strong>The driver's number is public.</strong> As agreed, tracking links show Call and
+      WhatsApp buttons with the real number, so anyone holding a link can see it. One
+      setting reverses this if it ever becomes a concern.</li>
+      <li><strong>Manual entry is temporary.</strong> Numbers are typed in for now. Once Zoho
+      carries the driver's number, one switch turns the manual control off and the existing
+      sync can fill it in instead — the database already distinguishes the two sources.</li>
+      <li><strong>Accuracy is recorded but not drawn.</strong> Every reading stores how precise it
+      was. Showing that as a circle on the map is a later addition needing no rework.</li>
+    </ul>
+  </section>
+
+  <footer>
+    MirchiLime Connect · driver SIM tracking · verified end to end against a live database
+  </footer>
+
+</div>
+</body>
+</html>

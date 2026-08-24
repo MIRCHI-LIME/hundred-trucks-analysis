@@ -148,6 +148,72 @@ check('remove-manual rejects empty vehicle_no',
       f"got: {rm}")
 
 # ─────────────────────────────────────────────
+section('9. Driver SIM Tracking')
+
+SIM_TRUCK  = 'MP04HE4561'
+SIM_MSISDN = '919999999999'
+
+sm = fetch('/api/set-sim')
+check('set-sim rejects empty vehicle_no',
+      sm.get('__http_status__') == 400 and sm.get('error') == 'missing vehicle_no',
+      f"got: {sm}")
+
+sm = fetch(f'/api/set-sim?vehicle_no={SIM_TRUCK}&msisdn=notanumber')
+check('set-sim rejects a bad msisdn',
+      sm.get('__http_status__') == 400 and sm.get('error') == 'invalid msisdn',
+      f"got: {sm}")
+
+sm = fetch(f'/api/set-sim?vehicle_no={SIM_TRUCK}&msisdn={SIM_MSISDN}&driver_name=Test+Driver', timeout=30)
+sim_assigned = sm.get('status') == 'assigned'
+check('set-sim assigns a driver SIM', sim_assigned,
+      sm.get('__error__','') or f"msisdn={sm.get('msisdn')}, first ping={sm.get('pinged')}, "
+                                f"mode={'MOCK' if sm.get('mock') else 'telenity'}")
+
+if sim_assigned:
+    if sm.get('mock'):
+        check('Telenity credentials configured', False,
+              'running on mock locations — set TELENITY_URL + TELENITY_KEY to go live', warn=True)
+
+    d = fetch('/api/hundred-trucks')
+    st = next((t for t in d.get('trucks', []) if t.get('vehicle_no') == SIM_TRUCK), None)
+    check('has_sim flag exposed on trucks list', bool(st and st.get('has_sim')),
+          f"has_sim={st.get('has_sim') if st else 'truck missing'}")
+
+    pd = fetch(f'/api/ping-sims?vehicle_no={SIM_TRUCK}', timeout=30)
+    check('ping-sims records a fix', pd.get('pinged', 0) >= 1,
+          pd.get('__error__','') or f"pinged={pd.get('pinged')}")
+
+    dd = fetch(f'/api/hundred-truck-detail?vehicle_no={SIM_TRUCK}')
+    pings = dd.get('sim_pings') or []
+    check('truck-detail carries the SIM trail', len(pings) >= 1, f"{len(pings)} pings")
+    if pings:
+        p = pings[0]
+        check('ping rows are complete', all(k in p for k in ('lat','lng','accuracy_m','source','pinged_at')),
+              f"keys={sorted(p.keys())}")
+        check('pinged_at parses like crossed_at',
+              isinstance(p['pinged_at'], str) and len(p['pinged_at']) >= 19 and p['pinged_at'][4] == '-',
+              f"pinged_at={p['pinged_at']!r}")
+    check('truck-detail carries the SIM number', (dd.get('sim') or {}).get('msisdn') == SIM_MSISDN,
+          f"sim={dd.get('sim')}")
+
+    ld = fetch('/api/sim-latest')
+    vnos = [r.get('vehicle_no') for r in ld.get('trucks', [])]
+    check('sim-latest returns one row per truck', len(vnos) == len(set(vnos)), f"{len(vnos)} rows")
+
+    tk = fetch('/api/make-token?vehicle_no=' + SIM_TRUCK)
+    if tk.get('token'):
+        tr = fetch('/api/track?token=' + tk['token'])
+        check('public track link carries the SIM trail', 'sim_pings' in tr,
+              f"{len(tr.get('sim_pings') or [])} pings, has_sim={tr.get('has_sim')}")
+
+    rm = fetch(f'/api/remove-sim?vehicle_no={SIM_TRUCK}')
+    check('remove-sim clears the assignment', rm.get('status') == 'removed', f"got: {rm}")
+    d = fetch('/api/hundred-trucks')
+    st = next((t for t in d.get('trucks', []) if t.get('vehicle_no') == SIM_TRUCK), None)
+    check('has_sim false again after removal', bool(st) and not st.get('has_sim'),
+          f"has_sim={st.get('has_sim') if st else 'truck missing'}")
+
+# ─────────────────────────────────────────────
 total   = len(results)
 passed  = sum(1 for r in results if r['status'] == 'PASS')
 warned  = sum(1 for r in results if r['status'] == 'WARN')

@@ -285,6 +285,7 @@
           <div class="dchip purple" id="d-plazas">—</div>
           <div class="dchip green" id="d-crossings">—</div>
           <div class="dchip" id="d-date-range">—</div>
+          <div class="dchip" id="d-sim" style="display:none;"></div>
         </div>
       </div>
 
@@ -524,6 +525,13 @@ let currentSearch = '';
 const API = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:8081'
   : 'https://hundred-trucks-analysis.onrender.com';
+
+// SIM ping timestamps — comparable ms, and IST display.
+// Falls back to native parsing in case a column ever serializes as an RFC-822 date.
+const simTs  = dt => { const d = new Date(String(dt||'').replace(' ','T')+'+05:30');
+                       return isNaN(d) ? (new Date(String(dt||'')).getTime() || 0) : d.getTime(); };
+const simFmt = dt => new Date(String(dt||'').replace(' ','T')+'+05:30')
+  .toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit',hour12:true});
 
 // ════════════════════════════════════════
 // SECTION A — FETCH TRUCK LIST
@@ -776,6 +784,56 @@ function applyFilter() {
   renderCombinedList(connected, credits, manual);
 }
 
+// ── Driver SIM assignment ──
+// Manual entry is a stopgap: once Zoho carries the driver's number, set this to false
+// and the sync will populate truck_sims with source='zoho' instead.
+const SIM_MANUAL_ENTRY = true;
+
+function renderSimChip(vno, sim) {
+  const el = document.getElementById('d-sim');
+  if (!el) return;
+  el.onclick = null;
+  if (sim && sim.msisdn) {
+    el.textContent   = `📶 ${sim.msisdn}${sim.driver_name ? ' · ' + sim.driver_name : ''}`;
+    el.style.display = '';
+    el.style.cursor  = SIM_MANUAL_ENTRY ? 'pointer' : 'default';
+    el.title         = SIM_MANUAL_ENTRY ? 'Click to stop SIM tracking' : 'Driver SIM tracking active';
+    if (SIM_MANUAL_ENTRY) el.onclick = () => removeDriverSim(vno, sim.msisdn);
+  } else if (SIM_MANUAL_ENTRY) {
+    el.textContent   = '＋ Add driver SIM';
+    el.style.display = '';
+    el.style.cursor  = 'pointer';
+    el.title         = 'Track this truck via the driver’s phone';
+    el.onclick       = () => addDriverSim(vno);
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+async function addDriverSim(vno) {
+  const raw = prompt(`Driver's mobile number for ${vno}\n(10 digits, or with +91)`);
+  if (!raw || !raw.trim()) return;
+  const name = (prompt('Driver name (optional)') || '').trim();
+  const el = document.getElementById('d-sim');
+  el.textContent = 'Saving…'; el.onclick = null;
+  try {
+    const r = await fetch(`${API}/api/set-sim?vehicle_no=${encodeURIComponent(vno)}&msisdn=${encodeURIComponent(raw.trim())}&driver_name=${encodeURIComponent(name)}`);
+    const d = await r.json();
+    if (d.error) { alert('Error: ' + d.error); }
+    await selectTruck(vno);
+  } catch(e) { alert('Failed to save driver SIM'); await selectTruck(vno); }
+}
+
+async function removeDriverSim(vno, msisdn) {
+  if (!confirm(`Stop SIM tracking for ${vno} (${msisdn})?`)) return;
+  try {
+    const r = await fetch(`${API}/api/remove-sim?vehicle_no=${encodeURIComponent(vno)}`);
+    const d = await r.json();
+    if (d.error) { alert('Error: ' + d.error); return; }
+    await selectTruck(vno);
+  } catch(e) { alert('Failed to remove driver SIM'); }
+}
+
 async function addManualTruck() {
   const input = document.getElementById('manual-add-input');
   const vno = (input.value || '').trim().toUpperCase();
@@ -883,7 +941,8 @@ async function selectTruck(vehicleNo) {
     // ── Render all tabs ──
     renderCrossings(data.crossings);
     renderPlazas(data.plaza_summary);
-    renderTimeline(data.crossings);
+    renderTimeline(data.crossings, data.sim_pings || []);
+    renderSimChip(truck.vehicle_no, data.sim);
 
   } catch(e) {
     document.getElementById('crossings-body').innerHTML =
@@ -925,7 +984,7 @@ function renderPlazas(plazas) {
 // ════════════════════════════════════════
 let journeyMapInstance = null;
 
-function renderJourneyMap(crossings) {
+function renderJourneyMap(crossings, simPings) {
   const sorted = [...crossings].sort((a, b) => a.crossed_at.localeCompare(b.crossed_at));
   const allValid = sorted.filter(c => c.lat && c.lng && parseFloat(c.lat) !== 0 && parseFloat(c.lng) !== 0);
   // deduplicate: skip repeated plaza if gap < 6 hours (same plaza crossed twice quickly)
@@ -938,7 +997,11 @@ function renderJourneyMap(crossings) {
     recentPlaza.set(c.plaza, t);
     validPoints.push(c);
   }
-  if (validPoints.length < 2) return;
+  const simValid = (simPings || [])
+    .filter(p => p.lat && p.lng && parseFloat(p.lat) !== 0 && parseFloat(p.lng) !== 0)
+    .sort((a, b) => simTs(a.pinged_at) - simTs(b.pinged_at));
+  // a SIM-only truck still deserves a map
+  if (validPoints.length < 2 && simValid.length < 2) return;
 
   if (journeyMapInstance) { journeyMapInstance.remove(); journeyMapInstance = null; }
 
@@ -1000,11 +1063,25 @@ function renderJourneyMap(crossings) {
     const outCoords = perpOffset(coords.slice(0, turnIdx + 1), OFFSET);
     const retCoords = hasReturn ? perpOffset(coords.slice(turnIdx), -OFFSET) : [];
 
-    // draw outbound blue solid, return orange dashed
+    // driver SIM trail — dotted, because the SIM leads: it shows where the truck has got to
+    // before any toll confirms it. Raw points (never road-snapped: cell fixes are ±300m–2km).
+    // Drawn first, so a confirming toll crossing paints over it.
+    const simCoords = simValid.map(p => [parseFloat(p.lat), parseFloat(p.lng)]);
+    if (simCoords.length > 1)
+      L.polyline(simCoords, { color:'#2f6fd4', weight:4, opacity:0.95, dashArray:'2,8', lineCap:'round' }).addTo(map);
+
+    // toll route solid — a crossing confirms the truck really was there
     if (outCoords.length > 1)
       L.polyline(outCoords, { color:'#2f6fd4', weight:5, opacity:0.9 }).addTo(map);
     if (retCoords.length > 1)
       L.polyline(retCoords, { color:'#f57c00', weight:4, opacity:0.9, dashArray:'10,6' }).addTo(map);
+
+    // SIM ping dots last, so they stay clickable above both lines
+    simValid.forEach(p => {
+      L.circleMarker([parseFloat(p.lat), parseFloat(p.lng)], {
+        radius: 4, fillColor: '#2f6fd4', color: '#fff', weight: 1.5, fillOpacity: 1
+      }).bindPopup(`<b>Driver SIM</b><br>${simFmt(p.pinged_at)}${p.accuracy_m ? ` · ±${p.accuracy_m} m` : ''}`).addTo(map);
+    });
 
     // directional arrows
     for (let i = 0; i < coords.length - 1; i++) {
@@ -1032,7 +1109,8 @@ function renderJourneyMap(crossings) {
       const d = L.DomUtil.create('div');
       d.style.cssText = 'background:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.15);font-family:Segoe UI,sans-serif;font-size:12px;font-weight:600;';
       d.innerHTML = `<div style="margin-bottom:6px;color:#555;font-size:11px;font-weight:700;letter-spacing:0.5px;">ROUTE LEGEND</div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:24px;height:3px;background:#2f6fd4;border-radius:2px;"></div> Outbound</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:24px;height:5px;background:#2f6fd4;border-radius:3px;"></div> Toll route (confirmed)</div>
+        ${simCoords.length > 1 ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:24px;border-top:4px dotted #2f6fd4;"></div> Driver SIM (live)</div>` : ''}
         ${hasReturn ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:20px;border-top:3px dashed #f57c00;"></div> Return</div>` : ''}
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><div style="width:16px;height:16px;border-radius:50%;background:#43a047;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:800;">S</div> Start</div>
         <div style="display:flex;align-items:center;gap:8px;"><div style="width:16px;height:16px;border-radius:50%;background:#e53935;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:800;">C</div> Current</div>`;
@@ -1073,7 +1151,22 @@ function renderJourneyMap(crossings) {
         </div>`, { maxWidth: 260 });
     });
 
-    const bounds = L.latLngBounds(coords);
+    // if the newest SIM fix post-dates the last toll, that — not the "C" plaza — is where the truck is
+    const lastCross = validPoints[validPoints.length - 1];
+    const newestSim = simValid[simValid.length - 1];
+    if (newestSim && (!lastCross || simTs(newestSim.pinged_at) > simTs(lastCross.crossed_at))) {
+      L.marker([parseFloat(newestSim.lat), parseFloat(newestSim.lng)], {
+        icon: L.divIcon({
+          className: '',
+          html: `<div style="position:relative;width:0;height:0;">
+                   <div style="position:absolute;width:26px;height:26px;background:#2f6fd4;border-radius:50%;border:2.5px solid #fff;box-shadow:0 0 0 2px #2f6fd4;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;font-size:12px;">📶</div>
+                 </div>`,
+          iconAnchor: [0, 0]
+        })
+      }).addTo(map).bindPopup(`<b>Current position · driver SIM</b><br>${simFmt(newestSim.pinged_at)}${newestSim.accuracy_m ? ` · ±${newestSim.accuracy_m} m` : ''}`);
+    }
+
+    const bounds = L.latLngBounds([...coords, ...simCoords]);
     window._journeyBounds = bounds;
     map.fitBounds(bounds, { padding:[50,50], maxZoom:12 });
     setTimeout(() => {
@@ -1083,9 +1176,9 @@ function renderJourneyMap(crossings) {
   });
 }
 
-function renderTimeline(crossings) {
+function renderTimeline(crossings, simPings) {
   const sorted = [...crossings].sort((a, b) => a.crossed_at.localeCompare(b.crossed_at));
-  renderJourneyMap(sorted);
+  renderJourneyMap(sorted, simPings || []);
 }
 
 // ════════════════════════════════════════
@@ -1687,6 +1780,7 @@ const lrRevGeoCache  = {};
 let lrActiveTruck = null;
 let lrLastTruckData = null;
 let lrTollActive = null; // vno whose toll plazas are shown on map
+let lrDrawGen    = 0;    // guards against stale async road-routes painting over a redraw // vno whose toll plazas are shown on map
 let lrRenderTruckCard = null; // set by loadLiveRoutes so lrFilterTruck can re-render cards
 
 async function pingTruck(vno, btn) {
@@ -1765,19 +1859,21 @@ function lrFilterTruck(vno) {
   });
   if (lrLastTruckData) lrDrawMarkers(lrLastTruckData, lrActiveTruck);
 
-  // fetch full crossing history for this truck if we only have 1 point loaded
+  // fetch full crossing history (and the SIM trail) for this truck if not loaded yet
   if (lrActiveTruck && lrLastTruckData && lrRenderTruckCard) {
     const td = lrLastTruckData.find(t => t.truck.vehicle_no === lrActiveTruck);
-    if (td && td.crossings.length <= 1) {
+    if (td && (td.crossings.length <= 1 || (td.hasSim && !td.simPings))) {
       fetch(`${API}/api/hundred-truck-detail?vehicle_no=${lrActiveTruck}`)
         .then(r => r.json()).then(d => {
           const full = (d.crossings || []).filter(c => c.lat && c.lat !== 0);
           if (full.length > td.crossings.length) {
             td.crossings = full;
             td.crossingCount = full.length;
-            lrDrawMarkers(lrLastTruckData, lrActiveTruck);
-            lrRenderTruckCard(td);
           }
+          td.simPings = (d.sim_pings || []).filter(p => p.lat && p.lat !== 0);
+          td.sim      = d.sim || null;
+          lrDrawMarkers(lrLastTruckData, lrActiveTruck);
+          lrRenderTruckCard(td);
         }).catch(() => {});
     }
   }
@@ -1816,6 +1912,14 @@ async function initLiveRoutes() {
       <div style="display:flex;align-items:center;gap:7px;">
         <svg width="18" height="22" viewBox="0 0 18 22"><circle cx="9" cy="9" r="8" fill="#e05c2e" stroke="#fff" stroke-width="2"/><line x1="9" y1="17" x2="9" y2="22" stroke="#222" stroke-width="2.5" stroke-linecap="round"/></svg>
         <span style="color:#444;">Destination</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;">
+        <svg width="18" height="18" viewBox="0 0 18 18"><line x1="1" y1="9" x2="17" y2="9" stroke="#666" stroke-width="5" stroke-linecap="round"/></svg>
+        <span style="color:#444;">Toll route (confirmed)</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;">
+        <svg width="18" height="18" viewBox="0 0 18 18"><line x1="1" y1="9" x2="17" y2="9" stroke="#666" stroke-width="4" stroke-dasharray="1,4" stroke-linecap="round"/></svg>
+        <span style="color:#444;">Driver SIM (live)</span>
       </div>`;
     return d;
   };
@@ -1838,13 +1942,21 @@ async function loadLiveRoutes() {
 
   // fetch trucks + last positions only — renders in ~1s; no heavy batch on initial load
   const enroutePromise = fetch(`${API}/api/enroute-trips`).catch(() => null);
-  const [trucksRes, posRes] = await Promise.all([
+  const [trucksRes, posRes, simRes] = await Promise.all([
     fetch(`${API}/api/hundred-trucks`),
     fetch(`${API}/api/hundred-truck-positions`),
+    fetch(`${API}/api/sim-latest`).catch(() => null),
   ]);
 
   const data      = await trucksRes.json();
   const posData   = await posRes.json();
+
+  // newest SIM fix per truck — used wherever it beats the last toll crossing
+  const latestSimByTruck = {};
+  try {
+    const simData = simRes ? await simRes.json() : null;
+    for (const p of (simData?.trucks || [])) latestSimByTruck[p.vehicle_no] = p;
+  } catch(e) {}
   const connected = (data.trucks || []).filter(t => t.is_connected === 1 || t.is_connected === true);
   const lastPositions = posData.positions || {};
   // use last position as single-crossing array until full batch arrives
@@ -1929,7 +2041,7 @@ async function loadLiveRoutes() {
     } catch(e) {}
   }
 
-  lrRenderTruckCard = function renderTruckCard({ truck, color, crossings, tripInfo, crossingCount }) {
+  lrRenderTruckCard = function renderTruckCard({ truck, color, crossings, tripInfo, crossingCount, hasSim }) {
     const last = crossings[crossings.length - 1];
     const locKey = last && last.lat ? `${last.lat.toFixed(2)},${last.lng.toFixed(2)}` : null;
     const cityName = locKey && revCache[locKey] ? revCache[locKey] : null;
@@ -1993,6 +2105,7 @@ async function loadLiveRoutes() {
         ${isCompleted ? `<div style="font-size:10px;font-weight:700;color:#1a7a3a;background:#d4edda;border-radius:6px;padding:2px 8px;display:inline-block;margin-bottom:4px;">✅ Trip Completed</div>` : ''}
         <div style="font-size:12px;font-weight:800;color:#1a1a2e;display:flex;align-items:center;gap:5px;">
           ${vno}
+          ${hasSim ? `<span title="Driver SIM tracking active" style="font-size:11px;">📶</span>` : ''}
           ${(() => {
             if (!last) return '';
             const hrs = (Date.now() - new Date(last.crossed_at.replace(' ','T')+'+05:30').getTime()) / 3600000;
@@ -2025,7 +2138,7 @@ async function loadLiveRoutes() {
     const color = TRUCK_COLORS[i % TRUCK_COLORS.length];
     try {
       const crossings = (crossingsByTruck[truck.vehicle_no] || []).filter(c => c.lat && c.lat !== 0);
-      const td = { truck, color, crossings, tripInfo: enrouteMap[truck.vehicle_no], crossingCount: crossingCountByTruck[truck.vehicle_no] };
+      const td = { truck, color, crossings, tripInfo: enrouteMap[truck.vehicle_no], crossingCount: crossingCountByTruck[truck.vehicle_no], hasSim: !!truck.has_sim, latestSim: latestSimByTruck[truck.vehicle_no] || null };
       truckData.push(td);
 
       // add legend chip immediately
@@ -2078,6 +2191,7 @@ async function loadLiveRoutes() {
 function lrDrawMarkers(truckData, filterVno) {
   const geocodeCache = lrGeocodeCache;
   const cityCache    = lrCityCache;
+  const gen = ++lrDrawGen;   // stale async road-routes must not paint over a newer redraw
 
   // clear existing markers/polylines
   liveRoutesMap.eachLayer(l => { if (l instanceof L.Polyline || l instanceof L.CircleMarker || l instanceof L.Marker) liveRoutesMap.removeLayer(l); });
@@ -2105,7 +2219,12 @@ function lrDrawMarkers(truckData, filterVno) {
       : (dropPin && geocodeCache[dropPin] ? geocodeCache[dropPin] : null);
     if (dropCoord && dropPin) geocodeCache[dropPin] = dropCoord;
     if (tripInfo?.dropCity && dropPin) cityCache[dropPin] = tripInfo.dropCity;
-    const currentCoord = last ? [last.lat, last.lng] : null;
+    // freshest signal wins — a SIM fix newer than the last toll is the truer position
+    const newestSim  = (td.simPings && td.simPings.length) ? td.simPings[td.simPings.length - 1] : td.latestSim;
+    const simFresher = !!(newestSim && newestSim.lat &&
+                          (!last || simTs(newestSim.pinged_at) > simTs(last.crossed_at)));
+    const currentCoord = simFresher ? [newestSim.lat, newestSim.lng]
+                       : last       ? [last.lat, last.lng] : null;
 
     const isSelected = filterVno === truck.vehicle_no;
     const showRoute  = !!filterVno; // only draw routes when a truck is selected
@@ -2119,13 +2238,32 @@ function lrDrawMarkers(truckData, filterVno) {
       const effectiveOriginCoord = originCoord || (sortedCrossings[0] ? [sortedCrossings[0].lat, sortedCrossings[0].lng] : null);
       const effectiveOriginLabel = cityCache[originPin] || originPin || (sortedCrossings[0]?.plaza) || 'Loading Point';
 
+      // toll route — solid, because a crossing confirms the truck really was there
       const routePts = [...(effectiveOriginCoord ? [effectiveOriginCoord] : []), ...plazaCoords];
       if (routePts.length > 1) {
         roadRoute(routePts).then(path => {
-          L.polyline(path, { color, weight: 5, opacity: 0.95 }).addTo(liveRoutesMap);
+          if (gen !== lrDrawGen) return;   // a newer redraw has since cleared the map
+          L.polyline(path, { color, weight: 5, opacity: 0.95 })
+            .addTo(liveRoutesMap)
+            .bringToFront();   // confirmed route paints over the SIM lead
         });
         routePts.forEach(c => allBounds.push(c));
       }
+
+      // driver SIM trail — dotted, because the SIM leads: it shows where the truck has got
+      // to before any toll confirms it. Never road-snapped: cell-tower fixes are ±300 m–2 km,
+      // so snapping would invent a road the truck may never have been on.
+      const simPings = (td.simPings || []).filter(p => p.lat && p.lng);
+      const simPts   = simPings.map(p => [p.lat, p.lng]);
+      if (simPts.length > 1) {
+        L.polyline(simPts, { color, weight: 4, opacity: 0.95, dashArray: '2,8', lineCap: 'round' }).addTo(liveRoutesMap);
+      }
+      simPings.forEach(p => {
+        L.circleMarker([p.lat, p.lng], { radius: 4, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 1 })
+          .bindPopup(`<b>Driver SIM</b><br>${simFmt(p.pinged_at)}${p.accuracy_m ? ` · ±${p.accuracy_m} m` : ''}`)
+          .addTo(liveRoutesMap);
+      });
+      simPts.forEach(c => allBounds.push(c));
 
       // ── destination pin — teardrop/pin shape ──
       // fallback: use last crossing if drop pincode not geocoded
@@ -2173,9 +2311,11 @@ function lrDrawMarkers(truckData, filterVno) {
 
     // always show current position diamond
     if (currentCoord) {
-      const key = `${last.lat.toFixed(3)},${last.lng.toFixed(3)}`;
+      const key = `${currentCoord[0].toFixed(3)},${currentCoord[1].toFixed(3)}`;
       if (!currentGroups[key]) currentGroups[key] = { coord: currentCoord, trucks: [] };
-      currentGroups[key].trucks.push({ truck, color, last, dropCity: dropPin ? (cityCache[dropPin] || dropPin) : '' });
+      currentGroups[key].trucks.push({ truck, color, last,
+        viaSim: simFresher ? newestSim : null,
+        dropCity: dropPin ? (cityCache[dropPin] || dropPin) : '' });
       allBounds.push(currentCoord);
     }
   }
@@ -2222,10 +2362,13 @@ function lrDrawMarkers(truckData, filterVno) {
       ? `<rect x="1" y="1" width="20" height="20" fill="${colors[0]}"/>`
       : colors.map((c,i) => `<rect x="${i*(22/n)+1}" y="1" width="${22/n}" height="20" fill="${c}"/>`).join('');
     const popupHtml = group.trucks.map(t => {
-      const pingTime = new Date(t.last.crossed_at.replace(' ','T')+'+05:30').toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true,timeZone:'Asia/Kolkata'});
+      const pingTime = t.viaSim ? simFmt(t.viaSim.pinged_at)
+                     : t.last   ? simFmt(t.last.crossed_at) : '—';
+      const where = t.viaSim ? `📶 Driver SIM${t.last ? ` · past ${t.last.plaza}` : ''}`
+                  : t.last   ? t.last.plaza : '—';
       return `<div style="margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee;">
         <b style="color:${t.color};font-size:13px;">${t.truck.vehicle_no}</b><br>
-        <span style="color:#333;">${t.last.plaza}</span><br>
+        <span style="color:#333;">${where}</span><br>
         <small style="color:#888;">${pingTime}</small>
         ${t.dropCity ? `<br><span style="color:#1a9e6e;font-weight:700;">→ ${t.dropCity}</span>` : ''}
       </div>`;

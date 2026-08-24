@@ -8,6 +8,7 @@ from psycopg2 import pool as pg_pool
 from dotenv import load_dotenv
 load_dotenv()
 from urllib.parse import urlparse, parse_qs
+import sim_location
 
 PORT         = 8081
 NEON_URL     = os.environ.get('DATABASE_URL')
@@ -34,6 +35,14 @@ def cache_get(key):
 def cache_set(key, data, ttl=60):
     with _cache_lock:
         _cache[key] = (time.time() + ttl, data)
+
+def cache_drop(*keys, prefix=None):
+    with _cache_lock:
+        for k in keys:
+            _cache.pop(k, None)
+        if prefix:
+            for k in [k for k in _cache if k.startswith(prefix)]:
+                _cache.pop(k, None)
 
 def make_token(vehicle_no):
     return hmac.new(TOKEN_SECRET.encode(), vehicle_no.encode(), hashlib.sha256).hexdigest()[:16]
@@ -117,6 +126,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             release_db(con)
             self._json({'routes': result})
 
+        elif self.path.startswith('/api/hundred-truck-positions'):
+            # latest crossing + total count per connected truck — fast initial load for Live Routes
+            con = get_db(); cur = con.cursor()
+            cur.execute('''
+                SELECT DISTINCT ON (c.vehicle_no)
+                       c.vehicle_no, c.plaza, c.lat, c.lng, c.crossed_at, counts.total
+                FROM crossings c
+                JOIN (
+                    SELECT vehicle_no, COUNT(*) as total
+                    FROM crossings
+                    WHERE vehicle_no IN (SELECT vehicle_no FROM trucks WHERE is_connected=1)
+                    GROUP BY vehicle_no
+                ) counts ON c.vehicle_no = counts.vehicle_no
+                WHERE c.vehicle_no IN (SELECT vehicle_no FROM trucks WHERE is_connected=1)
+                  AND c.lat IS NOT NULL AND c.lat != 0
+                ORDER BY c.vehicle_no, c.crossed_at DESC
+            ''')
+            rows = fetchall(cur); release_db(con)
+            self._json({'positions': {r['vehicle_no']: r for r in rows}})
+
         elif self.path.startswith('/api/hundred-truck-locations-at'):
             qs = parse_qs(urlparse(self.path).query)
             at = qs.get('at', [''])[0]
@@ -182,12 +211,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 cur.execute('SELECT plaza, lat, lng, COUNT(*) as count FROM crossings WHERE vehicle_no=%s GROUP BY plaza, lat, lng ORDER BY count DESC', (vno,))
                 plaza_summary = fetchall(cur)
                 dates = [str(c['crossed_at']) for c in crossings if c['crossed_at']]
+                sim       = sim_location.get_sim(con, vno)
+                sim_pings = sim_location.get_sim_pings(con, vno)
                 release_db(con)
                 result = {
                     'truck': truck, 'crossings': crossings, 'plaza_summary': plaza_summary,
                     'unique_plazas': len(plaza_summary),
                     'date_from': dates[0][:10] if dates else '—',
                     'date_to':   dates[-1][:10] if dates else '—',
+                    'sim': sim, 'sim_pings': sim_pings,
                 }
                 cache_set(cache_key, result, ttl=120)
                 self._json(result)
@@ -211,12 +243,16 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             cur.execute('SELECT * FROM trucks WHERE vehicle_no=%s', (vno,))
             truck = fetchone(cur) or {}
             cur.execute('SELECT plaza, lat, lng, direction, crossed_at FROM crossings WHERE vehicle_no=%s ORDER BY crossed_at', (vno,))
-            crossings = fetchall(cur); release_db(con)
+            crossings = fetchall(cur)
+            sim       = sim_location.get_sim(con, vno)
+            sim_pings = sim_location.get_sim_pings(con, vno)
+            release_db(con)
             dates = [str(c['crossed_at']) for c in crossings if c['crossed_at']]
             self._json({
                 'vehicle_no': vno, 'truck': truck, 'crossings': crossings,
                 'date_from': dates[0][:10] if dates else '—',
                 'date_to':   dates[-1][:10] if dates else '—',
+                'sim': sim, 'sim_pings': sim_pings, 'has_sim': bool(sim),
             })
 
         elif self.path.startswith('/api/enroute-trips'):
@@ -277,6 +313,52 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 self._json({'crossings': [], 'error': str(e)})
 
+        elif self.path.startswith('/api/set-sim'):
+            qs     = parse_qs(urlparse(self.path).query)
+            vno    = qs.get('vehicle_no', [''])[0].strip().upper()
+            raw    = qs.get('msisdn', [''])[0].strip()
+            driver = qs.get('driver_name', [''])[0].strip()
+            if not vno:
+                self._json({'error': 'missing vehicle_no'}); return
+            if not raw:
+                self._json({'error': 'missing msisdn'}); return
+            msisdn = sim_location.normalize_msisdn(raw)
+            if not msisdn:
+                self._json({'error': 'invalid msisdn'}); return
+            con = get_db()
+            sim_location.set_sim(con, vno, msisdn, driver)
+            fix = sim_location.record_ping(con, vno, msisdn)
+            release_db(con)
+            cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
+            self._json({'status': 'assigned', 'vehicle_no': vno, 'msisdn': msisdn,
+                        'driver_name': driver, 'pinged': bool(fix),
+                        'mock': sim_location.MOCK_MODE})
+
+        elif self.path.startswith('/api/sim-latest'):
+            con = get_db()
+            rows = sim_location.latest_pings(con)
+            release_db(con)
+            self._json({'trucks': rows})
+
+        elif self.path.startswith('/api/remove-sim'):
+            qs  = parse_qs(urlparse(self.path).query)
+            vno = qs.get('vehicle_no', [''])[0].strip().upper()
+            if not vno:
+                self._json({'error': 'missing vehicle_no'}); return
+            con = get_db()
+            n = sim_location.remove_sim(con, vno)
+            release_db(con)
+            cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
+            self._json({'status': 'removed', 'vehicle_no': vno, 'removed': n})
+
+        elif self.path.startswith('/api/ping-sims'):
+            qs  = parse_qs(urlparse(self.path).query)
+            vno = qs.get('vehicle_no', [''])[0].strip().upper() or None
+            done = sim_location.poll_sims(get_db, vno, delay=0 if vno else 2, release=release_db)
+            if vno: cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
+            else:   cache_drop('hundred-trucks', prefix='truck-detail-')
+            self._json({'pinged': done, 'mock': sim_location.MOCK_MODE})
+
         elif self.path == '/api/clear-cache':
             with _cache_lock:
                 _cache.clear()
@@ -322,7 +404,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 cur.execute('''
                     SELECT t.vehicle_no, t.owner, t.state, t.is_connected, t.fetched_at,
                            COUNT(DISTINCT c.plaza) as unique_plazas,
-                           COUNT(c.id) as crossing_count
+                           COUNT(c.id) as crossing_count,
+                           EXISTS(SELECT 1 FROM truck_sims s WHERE s.vehicle_no = t.vehicle_no AND s.is_active) AS has_sim
                     FROM trucks t
                     LEFT JOIN crossings c ON t.vehicle_no = c.vehicle_no
                     GROUP BY t.vehicle_no, t.owner, t.state, t.is_connected, t.fetched_at
@@ -385,6 +468,7 @@ def ensure_enroute_trips_table():
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     ensure_enroute_trips_table()
+    _sim_con = get_db(); sim_location.ensure_sim_tables(_sim_con); release_db(_sim_con)
     server = http.server.HTTPServer(('', PORT), Handler)
     print(f'100 Trucks server running at http://localhost:{PORT}')
     threading.Timer(1, lambda: webbrowser.open(f'http://localhost:{PORT}/hundred_trucks.html')).start()

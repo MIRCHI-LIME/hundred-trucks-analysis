@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
+import sim_location
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -17,6 +18,8 @@ TOKEN_SECRET = os.environ.get('TOKEN_SECRET')
 WA_TOKEN     = os.environ.get('WA_TOKEN')
 WA_PHONE_ID  = os.environ.get('WA_PHONE_ID')
 WA_TO        = os.environ.get('WA_TO')
+SIM_PING_HOURS       = os.environ.get('SIM_PING_HOURS', '6-23')      # '6-22/2' for 2-hourly
+PUBLIC_DRIVER_PHONE  = os.environ.get('PUBLIC_DRIVER_PHONE', '1')    # '0' hides driver number on public track links
 
 def make_token(vehicle_no):
     return hmac.new(TOKEN_SECRET.encode(), vehicle_no.encode(), hashlib.sha256).hexdigest()[:16]
@@ -85,7 +88,8 @@ def hundred_trucks():
     cur.execute('''
         SELECT t.vehicle_no, t.owner, t.state, t.is_connected, t.fetched_at, t.is_manual,
                COUNT(DISTINCT c.plaza) AS unique_plazas,
-               COUNT(c.id)             AS crossing_count
+               COUNT(c.id)             AS crossing_count,
+               EXISTS(SELECT 1 FROM truck_sims s WHERE s.vehicle_no = t.vehicle_no AND s.is_active) AS has_sim
         FROM trucks t
         LEFT JOIN crossings c ON c.vehicle_no = t.vehicle_no
         GROUP BY t.vehicle_no, t.owner, t.state, t.is_connected, t.fetched_at, t.is_manual
@@ -106,12 +110,15 @@ def hundred_truck_detail():
     cur.execute('SELECT plaza, lat, lng, COUNT(*) as count FROM crossings WHERE vehicle_no=%s GROUP BY plaza, lat, lng ORDER BY count DESC', (vno,))
     plaza_summary = fetchall(cur)
     dates = [str(c['crossed_at']) for c in crossings if c['crossed_at']]
+    sim       = sim_location.get_sim(con, vno)
+    sim_pings = sim_location.get_sim_pings(con, vno)
     con.close()
     return jsonify({
         'truck': truck, 'crossings': crossings, 'plaza_summary': plaza_summary,
         'unique_plazas': len(plaza_summary),
         'date_from': dates[0][:10] if dates else '—',
         'date_to':   dates[-1][:10] if dates else '—',
+        'sim': sim, 'sim_pings': sim_pings,
     })
 
 @application.route('/api/hundred-truck-details-batch')
@@ -342,14 +349,21 @@ def track_by_token():
     truck = fetchone(cur) or {}
     cur.execute('SELECT plaza, lat, lng, direction, crossed_at FROM crossings WHERE vehicle_no=%s ORDER BY crossed_at', (vno,))
     crossings = fetchall(cur)
+    sim       = sim_location.get_sim(con, vno)
+    sim_pings = sim_location.get_sim_pings(con, vno)
     con.close()
     dates = [str(c['crossed_at']) for c in crossings if c['crossed_at']]
+    # Public link: the trail always ships, the driver's number only when enabled
+    has_sim = bool(sim)
+    if sim and PUBLIC_DRIVER_PHONE != '1':
+        sim = {'driver_name': sim.get('driver_name')}
     return jsonify({
         'vehicle_no': vno,
         'truck': truck,
         'crossings': crossings,
         'date_from': dates[0][:10] if dates else '—',
         'date_to':   dates[-1][:10] if dates else '—',
+        'sim': sim, 'sim_pings': sim_pings, 'has_sim': has_sim,
     })
 
 def send_zoho_wa(phone_number, truck_no, tracking_url):
@@ -529,6 +543,59 @@ def remove_manual():
         cur.execute('UPDATE trucks SET is_connected=0, is_manual=FALSE WHERE vehicle_no=%s AND is_manual IS TRUE', (vno,))
         con.commit(); con.close()
         return jsonify({'status': 'removed', 'vehicle_no': vno})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@application.route('/api/set-sim')
+def set_sim():
+    vno    = request.args.get('vehicle_no', '').strip().upper()
+    raw    = request.args.get('msisdn', '').strip()
+    driver = request.args.get('driver_name', '').strip()
+    if not vno:
+        return jsonify({'error': 'missing vehicle_no'}), 400
+    if not raw:
+        return jsonify({'error': 'missing msisdn'}), 400
+    msisdn = sim_location.normalize_msisdn(raw)
+    if not msisdn:
+        return jsonify({'error': 'invalid msisdn'}), 400
+    try:
+        con = get_db()
+        sim_location.set_sim(con, vno, msisdn, driver)
+        fix = sim_location.record_ping(con, vno, msisdn)   # first fix immediately
+        con.close()
+        print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] SIM assigned: {vno} — {msisdn}', flush=True)
+        return jsonify({'status': 'assigned', 'vehicle_no': vno, 'msisdn': msisdn,
+                        'driver_name': driver, 'pinged': bool(fix),
+                        'mock': sim_location.MOCK_MODE})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@application.route('/api/sim-latest')
+def sim_latest():
+    con = get_db()
+    rows = sim_location.latest_pings(con)
+    con.close()
+    return jsonify({'trucks': rows})
+
+@application.route('/api/remove-sim')
+def remove_sim():
+    vno = request.args.get('vehicle_no', '').strip().upper()
+    if not vno:
+        return jsonify({'error': 'missing vehicle_no'}), 400
+    try:
+        con = get_db()
+        n = sim_location.remove_sim(con, vno)
+        con.close()
+        return jsonify({'status': 'removed', 'vehicle_no': vno, 'removed': n})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@application.route('/api/ping-sims')
+def ping_sims_now():
+    vno = request.args.get('vehicle_no', '').strip().upper() or None
+    try:
+        done = sim_location.poll_sims(get_db, vno, delay=0 if vno else 2)
+        return jsonify({'pinged': done, 'mock': sim_location.MOCK_MODE})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1003,6 +1070,9 @@ def ping_enroute():
     check_trip_completion()
     print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping enroute complete.', flush=True)
 
+def ping_sims():
+    sim_location.poll_sims(get_db)
+
 def ping_credit():
     # First sync fresh trip list from Zoho, then ping FASTag for each truck
     sync_credit_trips()
@@ -1032,6 +1102,7 @@ try:
     # Got the lock — this process starts the scheduler
     ensure_credit_trips_table()
     ensure_enroute_trips_table()
+    _sim_con = get_db(); sim_location.ensure_sim_tables(_sim_con); _sim_con.close()
     sync_credit_trips()    # sync on startup
     scheduler = BackgroundScheduler(timezone='Asia/Kolkata')
     scheduler.add_job(ping_enroute,       'cron', hour='6-23', minute=0)         # every hour 6 AM–11 PM IST (skip 12 AM–5 AM to save DB compute)
@@ -1042,6 +1113,7 @@ try:
     scheduler.add_job(sync_credit_trips,  'cron', hour=13, minute=0)            # 1:00 PM IST
     scheduler.add_job(sync_credit_trips,  'cron', hour=17, minute=0)            # 5:00 PM IST
     scheduler.add_job(sync_enroute_trips, 'cron', hour='9,11,13,15,17,19,21,23', minute=0)  # every 2 hrs 9 AM–11 PM IST
+    scheduler.add_job(ping_sims,          'cron', hour=SIM_PING_HOURS, minute=30)  # driver SIM fixes, offset from the FASTag ping at :00
     scheduler.add_job(auto_send_report,   'cron', hour=11, minute=5)            # 11:05 AM IST (after Zoho sync)
     scheduler.add_job(auto_send_report,   'cron', hour=19, minute=5)            # 7:05 PM IST (after Zoho sync)
     scheduler.start()

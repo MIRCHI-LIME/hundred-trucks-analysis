@@ -35,6 +35,7 @@ A real-time truck tracking system for **Mirchi-Lime** built on FASTag toll data.
 ```
 hundred/
 ├── wsgi.py               # Flask app + APScheduler jobs + all API routes
+├── sim_location.py       # Driver SIM tracking: Telenity client, mock, schema, poller
 ├── hundred_trucks.html   # Main dashboard (live map, truck cards)
 ├── track.html            # Public tracking page (token-authenticated)
 ├── requirements.txt      # Python dependencies
@@ -52,6 +53,11 @@ Set these on Render (or in a `.env` file for local dev):
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `TOKEN_SECRET` | Secret key for HMAC tracking tokens (any random string) |
 | `WA_TO` | Default WhatsApp recipient number (e.g. `+919518146736`) |
+| `TELENITY_URL` | Telenity LBS endpoint for driver SIM location. **Unset ⇒ mock mode** |
+| `TELENITY_KEY` | Telenity API credential. **Unset ⇒ mock mode** |
+| `SIM_MOCK` | Set to `1` to force mock SIM locations even when credentials exist |
+| `SIM_PING_HOURS` | Cron hours for the SIM poller (default `6-23`; use `6-22/2` for 2-hourly) |
+| `PUBLIC_DRIVER_PHONE` | `1` (default) shows Call/WhatsApp driver buttons on public track links; `0` hides them |
 
 ---
 
@@ -61,6 +67,7 @@ Set these on Render (or in a `.env` file for local dev):
 |---|---|---|
 | 6 AM – 11 PM, :00 | `ping_enroute` | Fetch FASTag crossings for all live trucks (18×/day) |
 | 9 AM, 1 PM, 6 PM | `ping_credit` | Sync credit/balance data |
+| 6 AM – 11 PM, :30 | `ping_sims` | Fetch driver SIM locations via Telenity (offset from the FASTag ping at :00) |
 | 11:05 AM & 7:05 PM | `auto_send_report` | WhatsApp summary + per-truck tracking links |
 
 > **Night pause (12 AM – 6 AM):** FASTag pings are skipped overnight since no one monitors at night. The 6 AM ping catches all overnight crossings. This saves ~25% of Neon PostgreSQL compute usage.
@@ -80,6 +87,10 @@ Set these on Render (or in a `.env` file for local dev):
 | `GET /api/track?token=` | Public tracking data (token-authenticated) |
 | `GET /api/make-token?vehicle_no=` | Generate a tracking token |
 | `GET /api/send-report` | Manually trigger WhatsApp report |
+| `GET /api/set-sim?vehicle_no=&msisdn=&driver_name=` | Assign a driver SIM to a truck (pings once immediately) |
+| `GET /api/remove-sim?vehicle_no=` | Stop SIM tracking for a truck |
+| `GET /api/ping-sims[?vehicle_no=]` | Poll SIM locations now — all active SIMs, or one truck |
+| `GET /api/sim-latest` | Newest SIM fix per truck (fleet overview) |
 | `GET /api/remove-enroute?vehicle_no=` | Remove a truck from enroute list |
 
 ---
@@ -127,6 +138,39 @@ Create a free Neon PostgreSQL database at [neon.tech](https://neon.tech). The co
 - `credit_trips` — short-distance trips within Tamil Nadu
 
 The schema for each table is defined in the technical documentation PDF.
+
+The two SIM-tracking tables (`truck_sims`, `sim_pings`) are created automatically on
+startup by `sim_location.ensure_sim_tables()` — no manual migration needed.
+
+### 1b. Driver SIM tracking (Telenity)
+
+Position now comes from two independent sources, and the maps draw them differently
+so they are never confused:
+
+| Source | Table | Line style | Meaning |
+|---|---|---|---|
+| FASTag toll crossings | `crossings` | thin **dotted** | Inferred — the truck was at these plazas; the path between them is a guess |
+| Driver SIM (Telenity) | `sim_pings` | thick **solid** | Observed — the handset actually reported these positions |
+
+Wherever a truck's newest SIM fix is more recent than its last toll crossing, that fix
+becomes the truck's current position (dashboard, journey map, and public track links).
+
+**Mock mode.** With `TELENITY_URL`/`TELENITY_KEY` unset, `sim_location.py` generates
+plausible positions by projecting forward from the truck's last two real toll crossings
+(~38 km/h along the last heading, seeded per hour so a trail builds up smoothly). The
+whole feature is therefore demoable before Telenity credentials arrive. Rows are tagged
+`sim_pings.source = 'mock'`, so at go-live you can clear them with
+`DELETE FROM sim_pings WHERE source='mock'`.
+
+Swapping in the real API means rewriting exactly one function — `_fetch_telenity()` in
+`sim_location.py` — and setting the two env vars. Nothing else changes.
+
+**Assigning a SIM.** Open a truck in the dashboard and use the `＋ Add driver SIM` chip.
+This is a stopgap: once Zoho carries the driver's number, set `SIM_MANUAL_ENTRY = false`
+in `hundred_trucks.html` and have `sync_enroute_trips()` insert rows with `source='zoho'`.
+
+**Before going live**, note that India's DoT/TRAI rules require subscriber consent before
+a location lookup. `truck_sims.consent_status` exists for this but nothing enforces it yet.
 
 ### 2. Zoho API
 
