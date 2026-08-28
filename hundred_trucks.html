@@ -244,6 +244,7 @@
     <button class="ml-tab"        id="btn-report"     onclick="showView('report')">Report</button>
     <button class="ml-tab"        id="btn-liveroutes" onclick="showView('liveroutes')">Live Routes</button>
     <button class="ml-tab"        id="btn-credittrips" onclick="showView('credittrips')">Credit Trips</button>
+    <button class="ml-tab"        id="btn-driversims"  onclick="showView('driversims')">Driver SIMs</button>
   </div>
   <button class="ml-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
     <span class="ml-toggle-thumb"></span>
@@ -375,6 +376,29 @@
 <!-- ════════════════════════════════════════
      CREDIT TRIPS VIEW
 ════════════════════════════════════════ -->
+<!-- ════════════════════════════════════════
+     DRIVER SIMs — the SIM tracking control surface
+════════════════════════════════════════ -->
+<div id="driversims-view" style="display:none;flex-direction:column;height:calc(100vh - var(--ml-nav-h));overflow:auto;">
+  <div style="padding:18px 24px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--ml-hairline);">
+    <div style="font-family:var(--ml-font-display);font-weight:800;font-size:17px;color:var(--ml-ink);">Driver SIMs</div>
+    <div id="sim-licence" style="font-size:11px;color:var(--ml-muted-2);"></div>
+    <div style="flex:1;"></div>
+    <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--ml-text);cursor:pointer;">
+      <input type="checkbox" id="sim-only-pending" onchange="renderSimList()"> Show only pending
+    </label>
+    <button onclick="sweepConsents()" style="background:var(--ml-olive-tint);color:var(--ml-olive-text);border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;">Check consents now</button>
+  </div>
+  <div id="sim-table-wrap" style="padding:8px 24px 24px;">
+    <div style="color:var(--ml-muted-2);font-size:13px;padding:24px 0;">Loading…</div>
+  </div>
+  <div id="sim-bulkbar" style="display:none;position:sticky;bottom:0;background:var(--ml-shell);border-top:1px solid var(--ml-hairline);padding:12px 24px;align-items:center;gap:10px;">
+    <span id="sim-selcount" style="font-size:12px;color:var(--ml-muted-2);"></span>
+    <button onclick="bulkResend()"  style="background:var(--ml-amber-chip-bg);color:var(--ml-amber-text);border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;">Resend consent to selected</button>
+    <button onclick="bulkDelete()"  style="background:var(--ml-terra-tint);color:var(--ml-terra-text);border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;">Delete selected</button>
+  </div>
+</div>
+
 <div id="credittrips-view" style="display:none;flex-direction:column;height:calc(100vh - var(--ml-nav-h));">
   <div class="view-hdr">
     <div class="view-title">Credit Trip — Live</div>
@@ -1171,7 +1195,7 @@ function renderJourneyMap(crossings, simPings) {
     simValid.forEach(p => {
       L.circleMarker([parseFloat(p.lat), parseFloat(p.lng)], {
         radius: 4, fillColor: '#2f6fd4', color: '#fff', weight: 1.5, fillOpacity: 1
-      }).bindPopup(`<b>Driver SIM</b><br>${simFmt(p.pinged_at)}${p.accuracy_m ? ` · ±${p.accuracy_m} m` : ''}`).addTo(map);
+      }).bindPopup(`<b>Driver SIM</b><br>${simFmt(p.pinged_at)}${p.address ? `<br><span style="color:#888;">${p.address}</span>` : ''}`).addTo(map);
     });
 
     // directional arrows
@@ -1254,7 +1278,7 @@ function renderJourneyMap(crossings, simPings) {
                  </div>`,
           iconAnchor: [0, 0]
         })
-      }).addTo(map).bindPopup(`<b>Current position · driver SIM</b><br>${simFmt(newestSim.pinged_at)}${newestSim.accuracy_m ? ` · ±${newestSim.accuracy_m} m` : ''}`);
+      }).addTo(map).bindPopup(`<b>Current position · driver SIM</b><br>${simFmt(newestSim.pinged_at)}${newestSim.address ? `<br><span style="color:#888;">${newestSim.address}</span>` : ''}`);
     }
 
     const bounds = L.latLngBounds([...coords, ...simCoords]);
@@ -1287,6 +1311,154 @@ function switchTab(tab, el) {
       if (window._journeyBounds) journeyMapInstance.fitBounds(window._journeyBounds, { padding: [80, 80] });
     }, 150);
   }
+}
+
+
+// ════════════════════════════════════════
+// DRIVER SIMs — list, select, resend, delete
+// ════════════════════════════════════════
+let simRows = [];
+
+const SIM_STATE_COLOR = {
+  tracking: 'var(--ml-olive-text)',
+  enabling: 'var(--ml-amber-text)',
+  awaiting: 'var(--ml-amber-text)',
+  expired:  'var(--ml-terra-text)',
+  hold:     'var(--ml-terra-text)',
+  problem:  'var(--ml-terra-text)',
+};
+const SIM_STATE_DOT = {
+  tracking: 'var(--ml-olive)', enabling: 'var(--ml-amber)', awaiting: 'var(--ml-amber)',
+  expired: 'var(--ml-terra)', hold: 'var(--ml-terra)', problem: 'var(--ml-terra)',
+};
+
+async function initSimScreen() {
+  await loadSimList();
+}
+
+async function loadSimList() {
+  try {
+    const r = await fetch(`${API}/api/sim-list`);
+    const d = await r.json();
+    simRows = d.sims || [];
+    const lic = d.licence;
+    document.getElementById('sim-licence').textContent =
+      lic ? `${lic.left} of ${lic.total} licences free`
+          : (d.mock ? 'mock mode — no Telenity credentials configured' : '');
+    renderSimList();
+  } catch (e) {
+    document.getElementById('sim-table-wrap').innerHTML =
+      '<div style="color:var(--ml-terra-text);font-size:13px;padding:20px 0;">Could not load driver SIMs.</div>';
+  }
+}
+
+function renderSimList() {
+  const onlyPending = document.getElementById('sim-only-pending').checked;
+  const rows = onlyPending ? simRows.filter(r => r.state === 'awaiting' || r.state === 'enabling') : simRows;
+  const wrap = document.getElementById('sim-table-wrap');
+
+  if (!rows.length) {
+    wrap.innerHTML = `<div style="color:var(--ml-muted-2);font-size:13px;padding:24px 0;">${
+      onlyPending ? 'No drivers are waiting to consent.' : 'No driver SIMs yet — add one from a truck\'s detail panel.'}</div>`;
+    updateSimSelection();
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <tr style="text-align:left;color:var(--ml-muted-2);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;">
+        <th style="padding:10px 8px 10px 0;width:28px;"><input type="checkbox" id="sim-all" onchange="toggleAllSims(this.checked)"></th>
+        <th style="padding:10px 14px 10px 0;">Truck</th>
+        <th style="padding:10px 14px 10px 0;">Driver mobile</th>
+        <th style="padding:10px 14px 10px 0;">Status</th>
+        <th style="padding:10px 14px 10px 0;">Valid till</th>
+        <th style="padding:10px 0;">Actions</th>
+      </tr>
+      ${rows.map(r => {
+        const dis = r.can_resend ? '' : 'disabled';
+        const tip = r.can_resend ? 'Re-send the consent SMS' : (r.resend_reason || '');
+        return `<tr style="border-top:1px solid var(--ml-hairline-3);">
+          <td style="padding:11px 8px 11px 0;"><input type="checkbox" class="sim-pick" data-vno="${r.vehicle_no}" onchange="updateSimSelection()"></td>
+          <td style="padding:11px 14px 11px 0;font-weight:800;color:var(--ml-ink);">${r.vehicle_no}
+            ${r.driver_name ? `<div style="font-weight:500;font-size:11px;color:var(--ml-muted-2);">${r.driver_name}</div>` : ''}</td>
+          <td style="padding:11px 14px 11px 0;font-family:var(--ml-font-mono);font-size:12px;">+${r.msisdn}</td>
+          <td style="padding:11px 14px 11px 0;color:${SIM_STATE_COLOR[r.state]};font-weight:700;">
+            <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${SIM_STATE_DOT[r.state]};margin-right:7px;"></span>${r.state_label}
+            ${r.last_error ? `<div style="font-weight:500;font-size:11px;color:var(--ml-muted-2);">${r.last_error}</div>` : ''}</td>
+          <td style="padding:11px 14px 11px 0;color:var(--ml-muted-2);">${r.valid_till || '—'}</td>
+          <td style="padding:11px 0;white-space:nowrap;">
+            <button ${dis} title="${tip}" onclick="resendConsent('${r.vehicle_no}')"
+              style="background:var(--ml-bg);color:var(--ml-text);border:1px solid var(--ml-border);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:${r.can_resend?'pointer':'not-allowed'};opacity:${r.can_resend?1:0.4};">Resend</button>
+            <button onclick="deleteSim('${r.vehicle_no}')"
+              style="background:var(--ml-terra-tint);color:var(--ml-terra-text);border:none;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px;">Delete</button>
+          </td></tr>`;
+      }).join('')}
+    </table>`;
+  updateSimSelection();
+}
+
+function pickedSims() {
+  return [...document.querySelectorAll('.sim-pick:checked')].map(c => c.dataset.vno);
+}
+
+function toggleAllSims(on) {
+  document.querySelectorAll('.sim-pick').forEach(c => { c.checked = on; });
+  updateSimSelection();
+}
+
+function updateSimSelection() {
+  const n = pickedSims().length;
+  const bar = document.getElementById('sim-bulkbar');
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('sim-selcount').textContent = `${n} selected`;
+}
+
+async function resendConsent(vno) {
+  const r = await fetch(`${API}/api/resend-consent?vehicle_no=${encodeURIComponent(vno)}`);
+  const d = await r.json();
+  if (!d.ok) alert(d.message || 'Could not resend');
+  await loadSimList();
+}
+
+async function deleteSim(vno) {
+  if (!confirm(`Stop SIM tracking for ${vno}? This releases the Telenity licence.`)) return;
+  await fetch(`${API}/api/remove-sim?vehicle_no=${encodeURIComponent(vno)}`);
+  await loadSimList();
+}
+
+async function sweepConsents() {
+  const r = await fetch(`${API}/api/sweep-consents`);
+  const d = await r.json();
+  await loadSimList();
+  alert(d.tracking_started ? `${d.tracking_started} truck(s) started tracking.` : 'No new consents yet.');
+}
+
+// Bulk resend deliberately skips anything inside the cooldown rather than firing at it —
+// Telenity lock a number for 24 hours if it is re-sent too often.
+async function bulkResend() {
+  const picked = pickedSims();
+  const rows = simRows.filter(r => picked.includes(r.vehicle_no));
+  const ready = rows.filter(r => r.can_resend);
+  const held  = rows.length - ready.length;
+  if (!ready.length) {
+    alert(`Nothing to resend.${held ? ` ${held} still inside the 24-hour cooldown.` : ''}`);
+    return;
+  }
+  if (!confirm(`Resend the consent SMS to ${ready.length} driver(s)?${held ? `\n\n${held} skipped — still inside the 24-hour cooldown.` : ''}`)) return;
+  for (const r of ready) {
+    await fetch(`${API}/api/resend-consent?vehicle_no=${encodeURIComponent(r.vehicle_no)}`);
+  }
+  await loadSimList();
+}
+
+async function bulkDelete() {
+  const picked = pickedSims();
+  if (!picked.length) return;
+  if (!confirm(`Stop SIM tracking for ${picked.length} truck(s)? This releases their licences.`)) return;
+  for (const vno of picked) {
+    await fetch(`${API}/api/remove-sim?vehicle_no=${encodeURIComponent(vno)}`);
+  }
+  await loadSimList();
 }
 
 // ════════════════════════════════════════
@@ -1635,8 +1807,9 @@ function showView(view) {
   document.getElementById('report-view').style.display       = view === 'report'     ? 'flex' : 'none';
   document.getElementById('liveroutes-view').style.display   = view === 'liveroutes'  ? 'flex' : 'none';
   document.getElementById('credittrips-view').style.display  = view === 'credittrips' ? 'flex' : 'none';
+  document.getElementById('driversims-view').style.display   = view === 'driversims'  ? 'flex' : 'none';
 
-  const btns = { trucks: 'btn-trucks', map: 'btn-map', routes: 'btn-routes', report: 'btn-report', liveroutes: 'btn-liveroutes', credittrips: 'btn-credittrips' };
+  const btns = { trucks: 'btn-trucks', map: 'btn-map', routes: 'btn-routes', report: 'btn-report', liveroutes: 'btn-liveroutes', credittrips: 'btn-credittrips', driversims: 'btn-driversims' };
   Object.entries(btns).forEach(([v, id]) => {
     document.getElementById(id).classList.toggle('active', v === view);
   });
@@ -1646,6 +1819,7 @@ function showView(view) {
   if (view === 'report')       initReport();
   if (view === 'liveroutes')   initLiveRoutes();
   if (view === 'credittrips')  initCreditTrips();
+  if (view === 'driversims')   initSimScreen();
 }
 
 // ════════════════════════════════════════
@@ -2351,7 +2525,7 @@ function lrDrawMarkers(truckData, filterVno) {
       }
       simPings.forEach(p => {
         L.circleMarker([p.lat, p.lng], { radius: 4, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 1 })
-          .bindPopup(`<b>Driver SIM</b><br>${simFmt(p.pinged_at)}${p.accuracy_m ? ` · ±${p.accuracy_m} m` : ''}`)
+          .bindPopup(`<b>Driver SIM</b><br>${simFmt(p.pinged_at)}${p.address ? `<br><span style="color:#888;">${p.address}</span>` : ''}`)
           .addTo(liveRoutesMap);
       });
       simPts.forEach(c => allBounds.push(c));

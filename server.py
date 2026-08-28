@@ -8,7 +8,7 @@ from psycopg2 import pool as pg_pool
 from dotenv import load_dotenv
 load_dotenv()
 from urllib.parse import urlparse, parse_qs
-import sim_location
+import sim_location, telenity
 
 PORT         = 8081
 NEON_URL     = os.environ.get('DATABASE_URL')
@@ -318,21 +318,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             vno    = qs.get('vehicle_no', [''])[0].strip().upper()
             raw    = qs.get('msisdn', [''])[0].strip()
             driver = qs.get('driver_name', [''])[0].strip()
-            if not vno:
-                self._json({'error': 'missing vehicle_no'}); return
-            if not raw:
-                self._json({'error': 'missing msisdn'}); return
+            if not vno:  self._json({'error': 'missing vehicle_no'}); return
+            if not raw:  self._json({'error': 'missing msisdn'}); return
             msisdn = sim_location.normalize_msisdn(raw)
             if not msisdn:
                 self._json({'error': 'invalid msisdn'}); return
             con = get_db()
-            sim_location.set_sim(con, vno, msisdn, driver)
-            fix = sim_location.record_ping(con, vno, msisdn)
+            try:
+                res = sim_location.assign_sim(con, vno, msisdn, driver)
+            except Exception as e:
+                release_db(con); self._json({'error': str(e)}); return
             release_db(con)
             cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
             self._json({'status': 'assigned', 'vehicle_no': vno, 'msisdn': msisdn,
-                        'driver_name': driver, 'pinged': bool(fix),
-                        'mock': sim_location.MOCK_MODE})
+                        'driver_name': driver, 'mock': sim_location.MOCK_MODE, **res})
+
+        elif self.path.startswith('/api/sim-list'):
+            con = get_db()
+            rows = sim_location.list_sims(con)
+            release_db(con)
+            lic = None
+            if not sim_location.MOCK_MODE:
+                try: lic = telenity.licence()
+                except Exception: pass
+            self._json({'sims': rows, 'licence': lic, 'mock': sim_location.MOCK_MODE})
 
         elif self.path.startswith('/api/sim-latest'):
             con = get_db()
@@ -346,15 +355,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if not vno:
                 self._json({'error': 'missing vehicle_no'}); return
             con = get_db()
-            n = sim_location.remove_sim(con, vno)
+            n = sim_location.release_sim(con, vno)
             release_db(con)
             cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
             self._json({'status': 'removed', 'vehicle_no': vno, 'removed': n})
 
+        elif self.path.startswith('/api/resend-consent'):
+            qs  = parse_qs(urlparse(self.path).query)
+            vno = qs.get('vehicle_no', [''])[0].strip().upper()
+            if not vno:
+                self._json({'error': 'missing vehicle_no'}); return
+            con = get_db()
+            res = sim_location.resend_consent(con, vno)
+            release_db(con)
+            self._json({'vehicle_no': vno, **res})
+
+        elif self.path.startswith('/api/sweep-consents'):
+            qs  = parse_qs(urlparse(self.path).query)
+            vno = qs.get('vehicle_no', [''])[0].strip().upper() or None
+            started = sim_location.sweep_consents(get_db, release=release_db, vehicle_no=vno)
+            cache_drop('hundred-trucks', prefix='truck-detail-')
+            self._json({'tracking_started': started, 'mock': sim_location.MOCK_MODE})
+
         elif self.path.startswith('/api/ping-sims'):
             qs  = parse_qs(urlparse(self.path).query)
             vno = qs.get('vehicle_no', [''])[0].strip().upper() or None
-            done = sim_location.poll_sims(get_db, vno, delay=0 if vno else 2, release=release_db)
+            done = sim_location.poll_sims(get_db, vno, release=release_db)
             if vno: cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
             else:   cache_drop('hundred-trucks', prefix='truck-detail-')
             self._json({'pinged': done, 'mock': sim_location.MOCK_MODE})

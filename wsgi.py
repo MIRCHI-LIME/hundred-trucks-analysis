@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from flask import Flask, request, jsonify, send_from_directory
 from apscheduler.schedulers.background import BackgroundScheduler
-import sim_location
+import sim_location, telenity
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
@@ -18,7 +18,8 @@ TOKEN_SECRET = os.environ.get('TOKEN_SECRET')
 WA_TOKEN     = os.environ.get('WA_TOKEN')
 WA_PHONE_ID  = os.environ.get('WA_PHONE_ID')
 WA_TO        = os.environ.get('WA_TO')
-SIM_PING_HOURS       = os.environ.get('SIM_PING_HOURS', '6-23')      # '6-22/2' for 2-hourly
+SIM_PING_HOURS       = os.environ.get('SIM_PING_HOURS', '6-23')      # hours the SIM poller runs
+SIM_PING_MINUTES     = os.environ.get('SIM_PING_MINUTES', '0,30')    # every 30 min within those hours
 PUBLIC_DRIVER_PHONE  = os.environ.get('PUBLIC_DRIVER_PHONE', '1')    # '0' hides driver number on public track links
 
 def make_token(vehicle_no):
@@ -355,8 +356,10 @@ def track_by_token():
     dates = [str(c['crossed_at']) for c in crossings if c['crossed_at']]
     # Public link: the trail always ships, the driver's number only when enabled
     has_sim = bool(sim)
-    if sim and PUBLIC_DRIVER_PHONE != '1':
-        sim = {'driver_name': sim.get('driver_name')}
+    if sim:
+        sim = {'msisdn': sim.get('msisdn'), 'driver_name': sim.get('driver_name')}
+        if PUBLIC_DRIVER_PHONE != '1':
+            sim.pop('msisdn', None)
     return jsonify({
         'vehicle_no': vno,
         'truck': truck,
@@ -560,15 +563,31 @@ def set_sim():
         return jsonify({'error': 'invalid msisdn'}), 400
     try:
         con = get_db()
-        sim_location.set_sim(con, vno, msisdn, driver)
-        fix = sim_location.record_ping(con, vno, msisdn)   # first fix immediately
+        # this registers the driver at Telenity, which sends them the consent SMS
+        res = sim_location.assign_sim(con, vno, msisdn, driver)
         con.close()
-        print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] SIM assigned: {vno} — {msisdn}', flush=True)
+        print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] SIM assigned: {vno} — {msisdn} '
+              f'(entity {res["entity_id"]}, consent {res["consent"]})', flush=True)
         return jsonify({'status': 'assigned', 'vehicle_no': vno, 'msisdn': msisdn,
-                        'driver_name': driver, 'pinged': bool(fix),
+                        'driver_name': driver, 'consent': res['consent'],
+                        'tracking': res['tracking'], 'entity_id': res['entity_id'],
                         'mock': sim_location.MOCK_MODE})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@application.route('/api/sim-list')
+def sim_list():
+    """Everything the driver SIM screen shows."""
+    con = get_db()
+    rows = sim_location.list_sims(con)
+    con.close()
+    lic = None
+    if not sim_location.MOCK_MODE:
+        try:
+            lic = telenity.licence()
+        except Exception as e:
+            print(f'[sim-list] licence check failed: {e}', flush=True)
+    return jsonify({'sims': rows, 'licence': lic, 'mock': sim_location.MOCK_MODE})
 
 @application.route('/api/sim-latest')
 def sim_latest():
@@ -584,9 +603,32 @@ def remove_sim():
         return jsonify({'error': 'missing vehicle_no'}), 400
     try:
         con = get_db()
-        n = sim_location.remove_sim(con, vno)
+        n = sim_location.release_sim(con, vno)
         con.close()
         return jsonify({'status': 'removed', 'vehicle_no': vno, 'removed': n})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@application.route('/api/resend-consent')
+def resend_consent():
+    """Re-send the consent SMS. Refused inside the cooldown — see sim_location."""
+    vno = request.args.get('vehicle_no', '').strip().upper()
+    if not vno:
+        return jsonify({'error': 'missing vehicle_no'}), 400
+    try:
+        con = get_db()
+        res = sim_location.resend_consent(con, vno)
+        con.close()
+        return jsonify({'vehicle_no': vno, **res})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@application.route('/api/sweep-consents')
+def sweep_consents_now():
+    vno = request.args.get('vehicle_no', '').strip().upper() or None
+    try:
+        started = sim_location.sweep_consents(get_db, vehicle_no=vno)
+        return jsonify({'tracking_started': started, 'mock': sim_location.MOCK_MODE})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -594,7 +636,7 @@ def remove_sim():
 def ping_sims_now():
     vno = request.args.get('vehicle_no', '').strip().upper() or None
     try:
-        done = sim_location.poll_sims(get_db, vno, delay=0 if vno else 2)
+        done = sim_location.poll_sims(get_db, vno)
         return jsonify({'pinged': done, 'mock': sim_location.MOCK_MODE})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1071,6 +1113,8 @@ def ping_enroute():
     print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping enroute complete.', flush=True)
 
 def ping_sims():
+    # consent first: a driver who replied since the last sweep starts being tracked now
+    sim_location.sweep_consents(get_db)
     sim_location.poll_sims(get_db)
 
 def ping_credit():
@@ -1113,7 +1157,7 @@ try:
     scheduler.add_job(sync_credit_trips,  'cron', hour=13, minute=0)            # 1:00 PM IST
     scheduler.add_job(sync_credit_trips,  'cron', hour=17, minute=0)            # 5:00 PM IST
     scheduler.add_job(sync_enroute_trips, 'cron', hour='9,11,13,15,17,19,21,23', minute=0)  # every 2 hrs 9 AM–11 PM IST
-    scheduler.add_job(ping_sims,          'cron', hour=SIM_PING_HOURS, minute=30)  # driver SIM fixes, offset from the FASTag ping at :00
+    scheduler.add_job(ping_sims,          'cron', hour=SIM_PING_HOURS, minute=SIM_PING_MINUTES)  # consent sweep + SIM fixes, every 30 min
     scheduler.add_job(auto_send_report,   'cron', hour=11, minute=5)            # 11:05 AM IST (after Zoho sync)
     scheduler.add_job(auto_send_report,   'cron', hour=19, minute=5)            # 7:05 PM IST (after Zoho sync)
     scheduler.start()

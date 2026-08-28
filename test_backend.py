@@ -188,13 +188,30 @@ if sim_assigned:
     check('truck-detail carries the SIM trail', len(pings) >= 1, f"{len(pings)} pings")
     if pings:
         p = pings[0]
-        check('ping rows are complete', all(k in p for k in ('lat','lng','accuracy_m','source','pinged_at')),
+        check('ping rows are complete', all(k in p for k in ('lat','lng','address','source','pinged_at')),
               f"keys={sorted(p.keys())}")
         check('pinged_at parses like crossed_at',
               isinstance(p['pinged_at'], str) and len(p['pinged_at']) >= 19 and p['pinged_at'][4] == '-',
               f"pinged_at={p['pinged_at']!r}")
     check('truck-detail carries the SIM number', (dd.get('sim') or {}).get('msisdn') == SIM_MSISDN,
           f"sim={dd.get('sim')}")
+
+    sl = fetch('/api/sim-list')
+    row = next((r for r in sl.get('sims', []) if r.get('vehicle_no') == SIM_TRUCK), None)
+    check('sim-list carries the driver SIM screen data', bool(row) and
+          {'state','state_label','can_resend','resend_reason','valid_till'} <= set(row or {}),
+          f"state={row.get('state') if row else 'row missing'}")
+    if row:
+        check('resend is blocked straight after assigning', not row['can_resend'],
+              row.get('resend_reason',''))
+
+    rc = fetch(f'/api/resend-consent?vehicle_no={SIM_TRUCK}')
+    check('resend-consent refuses inside the cooldown', rc.get('ok') is False,
+          rc.get('message',''))
+
+    sw = fetch(f'/api/sweep-consents?vehicle_no={SIM_TRUCK}', timeout=30)
+    check('sweep-consents runs', 'tracking_started' in sw,
+          f"started={sw.get('tracking_started')}")
 
     ld = fetch('/api/sim-latest')
     vnos = [r.get('vehicle_no') for r in ld.get('trucks', [])]

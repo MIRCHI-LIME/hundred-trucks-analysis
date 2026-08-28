@@ -1,0 +1,373 @@
+{
+  "info": {
+    "_postman_id": "7bc3a350-1ef0-41ba-91df-3f2b777fa447",
+    "name": "Mirchi Lime APIs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "29997375"
+  },
+  "item": [
+    {
+      "name": "Auth API",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Basic {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "https://smarttrail.telenity.com/trail-rest/login",
+          "protocol": "https",
+          "host": [
+            "smarttrail",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "trail-rest",
+            "login"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Import API",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "pm.request.url.query.each((q) => {\r",
+              "q.update(encodeURI(q.toString()))\r",
+              "});"
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "Host",
+            "value": "smarttrail.telenity.com"
+          },
+          {
+            "key": "Accept",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "Content-Length",
+            "value": "100",
+            "disabled": true
+          },
+          {
+            "key": "User-Agent",
+            "value": "curl/7.29.0"
+          },
+          {
+            "key": "token",
+            "value": "{{token}}",
+            "type": "text"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"entityImportList\": [\r\n        {\r\n            \"firstName\": \"user\",\r\n            \"lastName\": \"user\",\r\n            \"msisdn\": \"918296991379\"\r\n        }\r\n        \r\n    ]\r\n}"
+        },
+        "url": {
+          "raw": "https://smarttrail.telenity.com/trail-rest/entities/import",
+          "protocol": "https",
+          "host": [
+            "smarttrail",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "trail-rest",
+            "entities",
+            "import"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Consent Auth API",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          },
+          {
+            "key": "Host",
+            "value": "india-agw.telenity.com"
+          },
+          {
+            "key": "Authorization",
+            "value": "Basic {{token}}",
+            "type": "text"
+          }
+        ],
+        "url": {
+          "raw": "https://india-agw.telenity.com/oauth/token?grant_type=client_credentials",
+          "protocol": "https",
+          "host": [
+            "india-agw",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "oauth",
+            "token"
+          ],
+          "query": [
+            {
+              "key": "grant_type",
+              "value": "client_credentials"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Consent API",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "Host",
+            "value": "india-agw.telenity.com"
+          },
+          {
+            "key": "User-Agent",
+            "value": "curl/7.50.3"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "nocache"
+          },
+          {
+            "key": "Accept",
+            "value": "*/*"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/x-www-form-urlencoded"
+          },
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "https://india-agw.telenity.com/apigw/NOFBconsent/v1/NOFBconsent?address=tel:+=91**********",
+          "protocol": "https",
+          "host": [
+            "india-agw",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "apigw",
+            "NOFBconsent",
+            "v1",
+            "NOFBconsent"
+          ],
+          "query": [
+            {
+              "key": "address",
+              "value": "tel:+=91**********"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Location API (smtrail)",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "Host",
+            "value": "smarttrail.telenity.com"
+          },
+          {
+            "key": "token",
+            "value": "{{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "https://smarttrail.telenity.com/trail-rest/location/msisdnList/91**********?lastResult=true",
+          "protocol": "https",
+          "host": [
+            "smarttrail",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "trail-rest",
+            "location",
+            "msisdnList",
+            "91**********"
+          ],
+          "query": [
+            {
+              "key": "lastResult",
+              "value": "true"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Delete API",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [
+          {
+            "key": "token",
+            "value": "{{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"msisdnList\": [\"91**********\"]}"
+        },
+        "url": {
+          "raw": "https://smarttrail.telenity.com/trail-rest/tracking/remove",
+          "protocol": "https",
+          "host": [
+            "smarttrail",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "trail-rest",
+            "tracking",
+            "remove"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Modify Entity API",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "token",
+            "value": "{{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\r\n    \"isActive\": true,\r\n    \"isTracked\": true\r\n}"
+        },
+        "url": {
+          "raw": "https://smarttrail.telenity.com/trail-rest/entities/{{entity_id}}",
+          "protocol": "https",
+          "host": [
+            "smarttrail",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "trail-rest",
+            "entities",
+            "{{entity_id}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Entity Search API",
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "GET",
+        "header": [
+          {
+            "key": "Host",
+            "value": "smarttrail.telenity.com"
+          },
+          {
+            "key": "token",
+            "value": "{{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "https://smarttrail.telenity.com/trail-rest/entities?search=91**********",
+          "protocol": "https",
+          "host": [
+            "smarttrail",
+            "telenity",
+            "com"
+          ],
+          "path": [
+            "trail-rest",
+            "entities"
+          ],
+          "query": [
+            {
+              "key": "search",
+              "value": "91**********"
+            }
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}

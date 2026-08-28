@@ -35,7 +35,8 @@ A real-time truck tracking system for **Mirchi-Lime** built on FASTag toll data.
 ```
 hundred/
 ├── wsgi.py               # Flask app + APScheduler jobs + all API routes
-├── sim_location.py       # Driver SIM tracking: Telenity client, mock, schema, poller
+├── telenity.py           # Telenity SmartTrail API client (auth, entities, consent, location)
+├── sim_location.py       # Driver SIM lifecycle: schema, onboarding, consent sweep, poller, mock
 ├── hundred_trucks.html   # Main dashboard (live map, truck cards)
 ├── track.html            # Public tracking page (token-authenticated)
 ├── requirements.txt      # Python dependencies
@@ -53,10 +54,12 @@ Set these on Render (or in a `.env` file for local dev):
 | `DATABASE_URL` | Neon PostgreSQL connection string |
 | `TOKEN_SECRET` | Secret key for HMAC tracking tokens (any random string) |
 | `WA_TO` | Default WhatsApp recipient number (e.g. `+919518146736`) |
-| `TELENITY_URL` | Telenity LBS endpoint for driver SIM location. **Unset ⇒ mock mode** |
-| `TELENITY_KEY` | Telenity API credential. **Unset ⇒ mock mode** |
+| `TELENITY_TRAIL_BASIC` | Basic credential for `smarttrail.telenity.com` login. **Unset ⇒ mock mode** |
+| `TELENITY_AGW_BASIC` | Basic credential for the consent APIs on `india-agw.telenity.com`. **Unset ⇒ mock mode** |
 | `SIM_MOCK` | Set to `1` to force mock SIM locations even when credentials exist |
-| `SIM_PING_HOURS` | Cron hours for the SIM poller (default `6-23`; use `6-22/2` for 2-hourly) |
+| `SIM_PING_HOURS` | Cron hours for the SIM poller (default `6-23`) |
+| `SIM_PING_MINUTES` | Minutes within those hours (default `0,30` — every 30 min) |
+| `SIM_RESEND_COOLDOWN_HOURS` | Consent-resend cooldown (default `24`; Telenity lock numbers re-sent too often) |
 | `PUBLIC_DRIVER_PHONE` | `1` (default) shows Call/WhatsApp driver buttons on public track links; `0` hides them |
 
 ---
@@ -67,7 +70,7 @@ Set these on Render (or in a `.env` file for local dev):
 |---|---|---|
 | 6 AM – 11 PM, :00 | `ping_enroute` | Fetch FASTag crossings for all live trucks (18×/day) |
 | 9 AM, 1 PM, 6 PM | `ping_credit` | Sync credit/balance data |
-| 6 AM – 11 PM, :30 | `ping_sims` | Fetch driver SIM locations via Telenity (offset from the FASTag ping at :00) |
+| 6 AM – 11 PM, :00 & :30 | `ping_sims` | Sweep consents, then fetch driver SIM locations (Telenity refresh every 15 min) |
 | 11:05 AM & 7:05 PM | `auto_send_report` | WhatsApp summary + per-truck tracking links |
 
 > **Night pause (12 AM – 6 AM):** FASTag pings are skipped overnight since no one monitors at night. The 6 AM ping catches all overnight crossings. This saves ~25% of Neon PostgreSQL compute usage.
@@ -91,6 +94,9 @@ Set these on Render (or in a `.env` file for local dev):
 | `GET /api/remove-sim?vehicle_no=` | Stop SIM tracking for a truck |
 | `GET /api/ping-sims[?vehicle_no=]` | Poll SIM locations now — all active SIMs, or one truck |
 | `GET /api/sim-latest` | Newest SIM fix per truck (fleet overview) |
+| `GET /api/sim-list` | Driver SIM screen data — status, valid till, resend eligibility |
+| `GET /api/resend-consent?vehicle_no=` | Re-send the consent SMS (Jio only, 24-hour cooldown) |
+| `GET /api/sweep-consents` | Check pending consents and switch tracking on |
 | `GET /api/remove-enroute?vehicle_no=` | Remove a truck from enroute list |
 
 ---
@@ -149,21 +155,39 @@ so they are never confused:
 
 | Source | Table | Line style | Meaning |
 |---|---|---|---|
-| FASTag toll crossings | `crossings` | thin **dotted** | Inferred — the truck was at these plazas; the path between them is a guess |
-| Driver SIM (Telenity) | `sim_pings` | thick **solid** | Observed — the handset actually reported these positions |
+| FASTag toll crossings | `crossings` | **solid** | Confirmed — a crossing proves the truck was there |
+| Driver SIM (Telenity) | `sim_pings` | **dotted** | Leading — where the SIM says it has got to, ahead of confirmation |
+
+The SIM leads and the toll confirms, so where a crossing later covers ground the SIM
+already reported, the solid line simply paints over the dotted one.
 
 Wherever a truck's newest SIM fix is more recent than its last toll crossing, that fix
 becomes the truck's current position (dashboard, journey map, and public track links).
 
-**Mock mode.** With `TELENITY_URL`/`TELENITY_KEY` unset, `sim_location.py` generates
-plausible positions by projecting forward from the truck's last two real toll crossings
-(~38 km/h along the last heading, seeded per hour so a trail builds up smoothly). The
-whole feature is therefore demoable before Telenity credentials arrive. Rows are tagged
-`sim_pings.source = 'mock'`, so at go-live you can clear them with
-`DELETE FROM sim_pings WHERE source='mock'`.
+**It is a lifecycle, not a lookup.** A truck is not tracked the moment a number is
+entered. `assign_sim()` registers the driver with Telenity, which texts them; the driver
+replies `Y` (or calls the IVR and presses 1); `sweep_consents()` sees the approval and
+calls Modify to switch tracking on — Telenity never do this for us. Only then does the
+Location API return fixes. The **Driver SIMs** screen shows exactly which stage each
+truck is at, and crucially whether the driver or we are the ones holding it up.
 
-Swapping in the real API means rewriting exactly one function — `_fetch_telenity()` in
-`sim_location.py` — and setting the two env vars. Nothing else changes.
+**Resend is Jio-only and rate-limited.** Telenity lock a number at the operator for 24
+hours if the consent SMS is re-sent too often, so `can_resend()` refuses inside
+`SIM_RESEND_COOLDOWN_HOURS` and the bulk action skips anything still in cooldown rather
+than firing at it. Airtel, Vi and BSNL have no resend endpoint at all — those drivers
+use the IVR line.
+
+**Mock mode.** With the two `TELENITY_*_BASIC` variables unset, `sim_location.py`
+generates plausible positions by projecting forward from the truck's last two real toll
+crossings (~38 km/h along the last heading, seeded per hour so a trail builds smoothly),
+and the consent sweep approves immediately. Rows are tagged `sim_pings.source = 'mock'`,
+so at go-live clear them with `DELETE FROM sim_pings WHERE source='mock'`.
+
+**Two errors in Telenity's document, both verified against the live API:** the login call
+takes `Authorization: Basic <key>`, not the `Token:` header printed in section 4.1; and
+the consent token endpoint requires `Content-Type: application/x-www-form-urlencoded`,
+not the `application/json` shown in 4.4.1. Our `customer_id` is at `customer.id` in the
+login response, which their sample omits.
 
 **Assigning a SIM.** Open a truck in the dashboard and use the `＋ Add driver SIM` chip.
 This is a stopgap: once Zoho carries the driver's number, set `SIM_MANUAL_ENTRY = false`

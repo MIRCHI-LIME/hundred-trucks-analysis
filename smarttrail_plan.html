@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Plan for wiring the real Telenity SmartTrail API into MirchiLime Connect.">
+<title>From Mock to Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+:root {
+  --ground:      #ECE4D6;
+  --shell:       #FBF6EE;
+  --panel:       #FFFCF7;
+  --ink:         #2A211C;
+  --text:        #3A2C24;
+  --muted:       #6B5748;
+  --rule:        #DED0BA;
+  --rule-soft:   #E9DECB;
+  --gold:        #E0A800;
+  --gold-deep:   #A87C00;
+  --olive:       #5C8A32;
+  --terra:       #C0492D;
+  --code-bg:     #F3EADA;
+  --shadow:      0 24px 48px -30px rgba(58,44,36,0.45);
+  --display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --body:    'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --mono:    'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:#070B10; --shell:#0E141B; --panel:#121A22; --ink:#EAF1F6; --text:#CFD9E1;
+    --muted:#8B9CA9; --rule:#23303B; --rule-soft:#1B242D; --gold:#C6F135; --gold-deep:#A9D42B;
+    --olive:#5EEAD4; --terra:#FF5C5C; --code-bg:#0B1218; --shadow:0 26px 56px -30px rgba(0,0,0,0.8);
+  }
+}
+:root[data-theme="dark"] {
+  --ground:#070B10; --shell:#0E141B; --panel:#121A22; --ink:#EAF1F6; --text:#CFD9E1;
+  --muted:#8B9CA9; --rule:#23303B; --rule-soft:#1B242D; --gold:#C6F135; --gold-deep:#A9D42B;
+  --olive:#5EEAD4; --terra:#FF5C5C; --code-bg:#0B1218; --shadow:0 26px 56px -30px rgba(0,0,0,0.8);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--ground); color: var(--text);
+  font-family: var(--body); font-size: 16px; line-height: 1.65;
+  margin: 0; padding: 40px 20px 96px; -webkit-font-smoothing: antialiased;
+}
+
+.sheet {
+  max-width: 820px; margin: 0 auto; background: var(--shell);
+  border: 1px solid var(--rule); border-radius: 22px;
+  box-shadow: var(--shadow); padding: 52px 56px 60px;
+}
+
+.eyebrow {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 18px;
+}
+
+h1 {
+  font-family: var(--display); font-weight: 800;
+  font-size: clamp(34px, 6vw, 50px); line-height: 1.04;
+  letter-spacing: -0.025em; color: var(--ink);
+  text-wrap: balance; margin: 0 0 18px;
+}
+
+.standfirst { font-size: 18px; line-height: 1.6; max-width: 62ch; margin: 0; }
+
+h2 {
+  font-family: var(--display); font-weight: 700; font-size: 23px;
+  letter-spacing: -0.015em; color: var(--ink); text-wrap: balance; margin: 0 0 4px;
+}
+h3 { font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); margin: 0 0 6px; }
+
+p { margin: 0 0 14px; max-width: 68ch; }
+p:last-child { margin-bottom: 0; }
+
+section { margin-top: 44px; padding-top: 30px; border-top: 1px solid var(--rule); }
+section > h2 + .sub {
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); margin: 0 0 20px;
+}
+
+code, .m {
+  font-family: var(--mono); font-size: 0.87em; background: var(--code-bg);
+  border: 1px solid var(--rule-soft); border-radius: 5px; padding: 1.5px 5px;
+  color: var(--ink); word-break: break-word;
+}
+pre {
+  font-family: var(--mono); font-size: 12.5px; line-height: 1.7; background: var(--code-bg);
+  border: 1px solid var(--rule-soft); border-radius: 12px; padding: 15px 17px;
+  overflow-x: auto; margin: 0 0 14px; color: var(--ink);
+}
+pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+/* ── lifecycle diagram ── */
+.diagram {
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 16px;
+  padding: 26px 24px 18px; margin: 34px 0 0; overflow-x: auto;
+}
+.diagram svg { display: block; width: 100%; min-width: 600px; height: auto; }
+.dg-box   { fill: var(--code-bg); stroke: var(--rule); stroke-width: 1.5; }
+.dg-gate  { fill: none; stroke: var(--terra); stroke-width: 1.8; stroke-dasharray: 5 4; }
+.dg-num   { fill: var(--gold); }
+.dg-numtx { fill: var(--panel); font-family: var(--body); font-size: 11px; font-weight: 800; }
+.dg-label { fill: var(--ink); font-family: var(--body); font-size: 13px; font-weight: 700; }
+.dg-cap   { fill: var(--muted); font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.04em; }
+.dg-arrow { stroke: var(--rule); stroke-width: 2; fill: none; }
+.dg-note  { fill: var(--terra); font-family: var(--body); font-size: 11px; font-weight: 700; }
+
+/* ── ledger rows ── */
+.ledger { display: flex; flex-direction: column; }
+.row {
+  display: grid; grid-template-columns: 190px 1fr; gap: 20px;
+  padding: 14px 0; border-bottom: 1px solid var(--rule-soft); align-items: start;
+}
+.row:first-child { border-top: 1px solid var(--rule-soft); }
+.row .k { font-family: var(--mono); font-size: 12.5px; color: var(--gold-deep); font-weight: 500; word-break: break-word; }
+.row .v { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.row .v strong { color: var(--ink); font-weight: 700; }
+
+/* ── phases ── */
+ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 26px; }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr; gap: 16px; }
+ol.steps > li::before {
+  content: counter(s); font-family: var(--mono); font-size: 12px; color: var(--gold-deep);
+  border: 1px solid var(--rule); border-radius: 50%; width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center; background: var(--panel);
+}
+ol.steps .body > p:first-of-type { margin-top: 3px; }
+
+.chip {
+  display: inline-block; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 4px;
+  border: 1px solid currentColor; margin-left: 8px; vertical-align: 2px;
+}
+.chip.ready   { color: var(--olive); }
+.chip.blocked { color: var(--terra); }
+
+ul.plain { margin: 0 0 14px; padding-left: 20px; }
+ul.plain li { margin-bottom: 8px; max-width: 66ch; }
+ul.plain li:last-child { margin-bottom: 0; }
+
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 460px; font-size: 14px; }
+th, td { text-align: left; padding: 10px 14px 10px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+th {
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--muted); font-weight: 400; border-bottom-color: var(--rule);
+}
+td:first-child { font-family: var(--mono); font-size: 12.5px; color: var(--gold-deep); padding-right: 20px; white-space: nowrap; }
+td.wrap:first-child { white-space: normal; }
+
+.note {
+  background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--gold);
+  border-radius: 0 12px 12px 0; padding: 16px 20px; margin: 22px 0 0;
+}
+.note.warn { border-left-color: var(--terra); }
+.note p { font-size: 14.5px; margin-bottom: 8px; }
+.note p:last-child { margin-bottom: 0; }
+.note .h { font-family: var(--display); font-weight: 700; color: var(--ink); font-size: 15px; }
+
+/* ── screen mock ── */
+.mock { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 16px 18px; margin: 22px 0 0; overflow-x: auto; }
+.mock-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.mock-title { font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--ink); }
+.mock table { min-width: 560px; font-size: 13px; }
+.mock th { font-size: 9.5px; }
+.mock td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; }
+.mock td:first-child { font-family: var(--body); font-size: 13px; color: var(--text); padding-right: 10px; }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.dot.ok { background: var(--olive); } .dot.wait { background: var(--gold); } .dot.bad { background: var(--terra); }
+.mbtn { font-family: var(--mono); font-size: 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--rule); background: var(--code-bg); color: var(--ink); }
+.mbtn.off { opacity: 0.35; }
+.mbtn.danger { color: var(--terra); }
+.toggle { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; padding: 4px 11px; }
+.selbar { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rule); display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+
+footer {
+  margin-top: 46px; padding-top: 22px; border-top: 1px solid var(--rule);
+  font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.05em; color: var(--muted);
+}
+a { color: var(--gold-deep); text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 3px; }
+
+@media (max-width: 620px) {
+  .sheet { padding: 34px 24px 40px; border-radius: 16px; }
+  .row { grid-template-columns: 1fr; gap: 5px; }
+  body { padding: 18px 12px 60px; }
+}
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <p class="eyebrow">MirchiLime Connect · SmartTrail build plan</p>
+  <h1>From mock<br>to live.</h1>
+  <p class="standfirst">
+    The Telenity documentation has arrived, and it describes a different shape of
+    service than the one we built against. Driver tracking is not a lookup you call
+    with a phone number — it is a provisioning lifecycle that only starts producing
+    positions once the driver has replied to a text message.
+  </p>
+
+  <div class="diagram">
+    <svg viewBox="0 0 780 168" role="img" aria-label="Five-step lifecycle: import the driver, Telenity sends a consent SMS, the driver replies Y, we enable tracking, then location calls return positions. Step three is outside our control.">
+      <!-- boxes -->
+      <g>
+        <rect class="dg-box" x="2"   y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-box" x="164" y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-gate" x="326" y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-box" x="488" y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-box" x="650" y="44" width="128" height="52" rx="9"/>
+      </g>
+      <!-- numbers -->
+      <g>
+        <circle class="dg-num" cx="18"  cy="44" r="10"/><text class="dg-numtx" x="15"  y="48">1</text>
+        <circle class="dg-num" cx="180" cy="44" r="10"/><text class="dg-numtx" x="177" y="48">2</text>
+        <circle class="dg-num" cx="342" cy="44" r="10"/><text class="dg-numtx" x="339" y="48">3</text>
+        <circle class="dg-num" cx="504" cy="44" r="10"/><text class="dg-numtx" x="501" y="48">4</text>
+        <circle class="dg-num" cx="666" cy="44" r="10"/><text class="dg-numtx" x="663" y="48">5</text>
+      </g>
+      <!-- labels -->
+      <text class="dg-label" x="36"  y="72">Import driver</text>
+      <text class="dg-label" x="198" y="72">Consent SMS</text>
+      <text class="dg-label" x="360" y="72">Driver replies</text>
+      <text class="dg-label" x="522" y="72">Enable tracking</text>
+      <text class="dg-label" x="684" y="72">Positions</text>
+      <!-- captions -->
+      <text class="dg-cap" x="36"  y="88">POST /entities/import</text>
+      <text class="dg-cap" x="198" y="88">sent by Telenity</text>
+      <text class="dg-cap" x="360" y="88">&#8220;Y&#8221;, or IVR press 1</text>
+      <text class="dg-cap" x="522" y="88">PUT isTracked:true</text>
+      <text class="dg-cap" x="684" y="88">GET /location/…</text>
+      <!-- arrows -->
+      <path class="dg-arrow" d="M134 70 L158 70"/><path class="dg-arrow" d="M152 65 L160 70 L152 75"/>
+      <path class="dg-arrow" d="M296 70 L320 70"/><path class="dg-arrow" d="M314 65 L322 70 L314 75"/>
+      <path class="dg-arrow" d="M458 70 L482 70"/><path class="dg-arrow" d="M476 65 L484 70 L476 75"/>
+      <path class="dg-arrow" d="M620 70 L644 70"/><path class="dg-arrow" d="M638 65 L646 70 L638 75"/>
+      <!-- gate annotation -->
+      <path class="dg-gate" d="M392 100 L392 122"/>
+      <text class="dg-note" x="300" y="140">Outside our control — no reply, no tracking</text>
+    </svg>
+  </div>
+
+  <div class="note warn">
+    <p class="h">Correcting what I told you earlier</p>
+    <p>I said going live would mean rewriting one function and setting two environment
+    variables. That was based on my guess at the API's shape, and the guess was wrong.
+    The maps, the database and the scheduler all stand; the client layer in
+    <span class="m">sim_location.py</span> needs restructuring. Roughly a day's work,
+    not ten minutes.</p>
+  </div>
+
+  <section>
+    <h2>What stands, what changes</h2>
+    <p class="sub">Most of the build survives</p>
+    <div class="ledger">
+      <div class="row">
+        <div class="k">Maps and tracking page</div>
+        <p class="v"><strong>Unchanged.</strong> Dual lines, freshest-wins position, the truck
+        marker and the customer link are all independent of how positions are fetched.</p>
+      </div>
+      <div class="row">
+        <div class="k">Database tables</div>
+        <p class="v"><strong>Additive changes only.</strong> Both tables survive; they gain columns
+        for the Telenity entity id, consent state and the address text the API returns.</p>
+      </div>
+      <div class="row">
+        <div class="k">Scheduler</div>
+        <p class="v"><strong>Unchanged in shape</strong>, one job added for consent chasing.</p>
+      </div>
+      <div class="row">
+        <div class="k">Mock mode</div>
+        <p class="v"><strong>Kept.</strong> It stays behind the same seam so the demo keeps working
+        while credentials are pending, and so we can develop without burning licences.</p>
+      </div>
+      <div class="row">
+        <div class="k">Client layer</div>
+        <p class="v"><strong>Rewritten.</strong> Two hosts, two authentication schemes, token caching,
+        and six endpoints instead of one imagined call.</p>
+      </div>
+      <div class="row">
+        <div class="k">Accuracy radius</div>
+        <p class="v"><strong>Removed.</strong> I invented it; the API returns no such field. It is
+        replaced by <span class="m">detailedAddress</span>, a readable place name, which is
+        better and lets us stop geocoding coordinates ourselves.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>The build</h2>
+    <p class="sub">Seven phases · each one testable before the next</p>
+    <ol class="steps">
+
+      <li><div class="body">
+        <h3>Telenity client <span class="chip blocked">needs credentials</span></h3>
+        <p>A new <span class="m">telenity.py</span> holding nothing but the API. Splitting it from
+        <span class="m">sim_location.py</span> keeps our own logic — schema, mock, polling — separate
+        from their contract, so future API changes touch one file.</p>
+        <p>It handles the part the documentation makes fiddly: <strong>two hosts with two different
+        authentication schemes</strong>. The main API uses a <span class="m">Token</span> header valid
+        six hours; consent lives on a separate host behind an OAuth bearer valid one hour. Both get
+        cached and refreshed automatically when a call returns 401.</p>
+        <pre><code>import_entity()    register a driver, fires the consent SMS
+consent_status()   ALLOWED / PENDING / expired
+set_tracking()     switch tracking on once consent lands
+location()         one number
+bulk_locations()   up to 200 numbers in a single call
+delete_entity()    remove a driver, frees the licence
+licence()          how many licences are left</code></pre>
+        <p>Their documented error codes get mapped to plain language once, here — phone switched
+        off, out of coverage, not provisioned — so the rest of the system never handles raw numbers.</p>
+      </div></li>
+
+      <li><div class="body">
+        <h3>Schema additions <span class="chip ready">can start now</span></h3>
+        <p>All additive, so nothing existing breaks. Drivers gain a Telenity
+        <span class="m">entity_id</span> (needed to enable tracking), real consent state, and an
+        expiry date. Positions gain the address text, the result status, and the speed and distance
+        the bulk call returns.</p>
+      </div></li>
+
+      <li><div class="body">
+        <h3>Onboarding a driver <span class="chip blocked">needs credentials</span></h3>
+        <p>The Add driver SIM button does more than write a row. It checks that a licence is free,
+        registers the driver with Telenity, stores the returned id, and records that consent is
+        pending — which is when the driver receives the text.</p>
+        <p><strong>This changes what your team sees.</strong> A truck is not tracked the moment a
+        number is typed in. It is tracked when the driver replies. The chip needs to say so:
+        <em>awaiting driver consent</em>, then <em>tracking</em>.</p>
+        <div class="note">
+          <p class="h">There may be a shortcut worth using</p>
+          <p>Telenity's answer was that we must enable tracking ourselves <em>"if you import the
+          number first and then get the consent"</em>. Their document also describes IVR consent as
+          an advance model: a driver can call and press 1 before being registered at all.</p>
+          <p>If a driver consents during induction rather than when a truck is assigned, importing
+          them later should return tracking already enabled — no waiting, no chasing. That would be a
+          much better operational flow, and it is worth confirming at PoC. It only helps for Airtel,
+          Vi and BSNL drivers, though: Jio is SMS-only, so Jio drivers must still be imported first.</p>
+        </div>
+      </div></li>
+
+      <li><div class="body">
+        <h3>Consent chasing <span class="chip blocked">needs credentials</span></h3>
+        <p>A new scheduled job sweeps drivers whose consent is still pending, checks their status,
+        and switches tracking on the moment it turns to allowed. Without this step no position ever
+        arrives, because Telenity does not enable tracking for us.</p>
+        <p>It also watches expiry — consent lapses after 180 days on Jio — and re-flags a driver
+        for a fresh consent request when it does.</p>
+      </div></li>
+
+      <li><div class="body">
+        <h3>Polling, rebuilt around the bulk call <span class="chip blocked">needs credentials</span></h3>
+        <p>Today the poller loops one driver at a time with a pause between each. Telenity offers a
+        single call returning up to 200 numbers, which is both faster and easier on their rate
+        limits. Our fleet fits comfortably inside one call.</p>
+        <p>Only successful fixes are stored. A driver whose phone is off produces a logged reason
+        rather than a gap nobody can explain.</p>
+        <p><strong>Polling every 30 minutes.</strong> Telenity refresh positions every 15, so we are
+        deliberately taking every second fix — around 34 a day per truck through the 6&nbsp;am to
+        11&nbsp;pm window. That is far denser than the toll data and light on everyone's systems.
+        If the trail ever looks too coarse, moving to 15 minutes is a one-line change.</p>
+      </div></li>
+
+      <li><div class="body">
+        <h3>Removing a driver <span class="chip blocked">needs credentials</span></h3>
+        <p>Turning a SIM off has to switch tracking off and then delete the entity, otherwise the
+        licence stays consumed. Their documentation notes a licence can be held for 24 hours after
+        tracking stops, which affects whether we should disable tracking between trips at all —
+        also in the email.</p>
+      </div></li>
+
+      <li><div class="body">
+        <h3>Interface and tests <span class="chip ready">can start now</span></h3>
+        <p>Popups swap the invented accuracy figure for the real place name. The SIM chip gains its
+        consent states. The test suite grows cases for a driver who has not yet consented, and for
+        a phone that is switched off — the two situations your team will actually hit.</p>
+      </div></li>
+
+    </ol>
+  </section>
+
+  <section>
+    <h2>The driver SIM screen</h2>
+    <p class="sub">The pilot's control surface</p>
+    <p>One page listing every truck we want to track, so the operations team can see who is live,
+    who is still waiting on a driver, and act on either without touching anything else.</p>
+
+    <div class="mock">
+      <div class="mock-bar">
+        <span class="mock-title">Driver SIMs</span>
+        <span class="toggle">Show only pending</span>
+      </div>
+      <div class="tbl-wrap">
+        <table>
+          <tr><th></th><th>Truck</th><th>Driver mobile</th><th>Status</th><th>Valid till</th><th>Actions</th></tr>
+          <tr>
+            <td>☐</td><td>KA01AB1234</td><td>+91 98765 43210</td>
+            <td><span class="dot ok"></span>Tracking</td><td>22 Feb 2027</td>
+            <td><span class="mbtn off">Resend</span> <span class="mbtn danger">Delete</span></td>
+          </tr>
+          <tr>
+            <td>☑</td><td>TN09XY5678</td><td>+91 99899 99999</td>
+            <td><span class="dot wait"></span>Awaiting driver consent</td><td>—</td>
+            <td><span class="mbtn">Resend</span> <span class="mbtn danger">Delete</span></td>
+          </tr>
+          <tr>
+            <td>☑</td><td>MH12PQ9999</td><td>+91 90001 12233</td>
+            <td><span class="dot wait"></span>Consented — enabling tracking</td><td>—</td>
+            <td><span class="mbtn off">Resend</span> <span class="mbtn danger">Delete</span></td>
+          </tr>
+          <tr>
+            <td>☐</td><td>KA05CD7788</td><td>+91 98800 11223</td>
+            <td><span class="dot bad"></span>Consent expired</td><td>expired 14 Aug</td>
+            <td><span class="mbtn">Resend</span> <span class="mbtn danger">Delete</span></td>
+          </tr>
+        </table>
+      </div>
+      <div class="selbar">2 selected
+        <span class="mbtn">Resend consent to selected</span>
+        <span class="mbtn danger">Delete selected</span>
+      </div>
+    </div>
+
+    <p style="margin-top:20px;"><strong>Status is doing two jobs</strong>, and the distinction matters
+    operationally. <em>Awaiting driver consent</em> means the driver has to act and someone should
+    chase them. <em>Consented — enabling tracking</em> means Telenity are satisfied and
+    <em>we</em> have not yet switched tracking on; nobody needs chasing, the system just has not
+    caught up. Collapsing those into one "pending" would send your team after the wrong person.</p>
+
+    <div class="note warn">
+      <p class="h">Resend needs a guard, or it will lock drivers out</p>
+      <p>Telenity's own warning on the re-initiate call: numbers <strong>get locked for 24 hours at the
+      operator end when multiple hits are received</strong>. A "resend to all selected" button is
+      precisely the shape that produces repeat hits — one impatient click a few minutes after the
+      first and that driver is unreachable for a day.</p>
+      <p>So the screen records when each number was last sent, and the button greys out until enough
+      time has passed, on the row and in bulk. The tooltip should say when it becomes available again
+      rather than failing silently.</p>
+    </div>
+
+    <div class="note">
+      <p class="h">Resend only exists for Jio</p>
+      <p>The re-initiate endpoint is documented for Jio numbers only. Airtel, Vi and BSNL have no
+      equivalent — for those drivers the route is the IVR line, which they call themselves. The
+      button should therefore be disabled for non-Jio numbers with that explanation, rather than
+      offering an action that cannot work.</p>
+      <p>Same caveat on <em>Valid till</em>: the 180-day expiry is documented for Jio, and we do not
+      yet know whether other operators expire at all. Expect that column to be blank for non-Jio
+      drivers until Telenity confirm otherwise.</p>
+    </div>
+
+    <p style="margin-top:20px;">Deleting removes the driver at Telenity and frees the licence, though
+    not instantly — a licence can be held for 24 hours after tracking stops. On our side the record is
+    kept rather than erased, so a truck's history survives a change of driver.</p>
+  </section>
+
+  <section>
+    <h2>The pilot</h2>
+    <p class="sub">Five drivers · learning the operation, not just the code</p>
+    <p>The first phase is deliberately small: five drivers out of a fifty-licence allocation, run
+    until the whole operation is understood — onboarding a tranco, briefing drivers, collecting
+    consent, and seeing how the data actually behaves against the toll crossings we already trust.
+    Scaling up is a commercial decision to take afterwards, not a technical one.</p>
+    <p>That scope changes what is worth building first. At five trucks the backend is the easy part.
+    What decides whether the pilot succeeds is whether the operations team can see, at a glance,
+    which drivers have consented and which are sitting idle — and, when a truck shows nothing, why.
+    Consent visibility earns its place ahead of any polling sophistication.</p>
+    <div class="note">
+      <p class="h">The number worth measuring</p>
+      <p>Consent conversion — how many of the five drivers actually reply to the SMS. If it is four
+      in five, this scales. If it is one in five, no amount of code fixes it and the answer lies in
+      the IVR route, or briefing drivers at induction, or something else entirely. That figure will
+      be clear within a week and is worth more than anything in the rest of this plan.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>What is blocking what</h2>
+    <p class="sub">Cross-referenced to the email</p>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Needed</th><th>Blocks</th></tr>
+        <tr><td class="wrap">Starting the PoC with Telenity</td><td>Everything. The collection, the auth key and the consent credentials are all issued at PoC initiation, not before</td></tr>
+        <tr><td class="wrap">Staging URLs</td><td>Safe first testing — the same keys work on staging and production</td></tr>
+        <tr><td>Tracking frequency</td><td>Phase 5's polling interval</td></tr>
+        <tr><td>Licence count</td><td>How many trucks we can onboard</td></tr>
+        <tr><td>Expected accuracy</td><td>Whether the SIM trail can be snapped to roads</td></tr>
+      </table>
+    </div>
+    <p style="margin-top:16px;">Phases 2 and 7 need none of this and can be built while we wait.</p>
+    <div class="note">
+      <p class="h">Answered so far</p>
+      <p><strong>No source-IP allow-listing.</strong> Our hosting needs no change. That was the risk
+      most likely to force work outside the application itself, and it is closed.</p>
+      <p><strong>Enabling tracking is always manual.</strong> Confirmed: after consent arrives we must
+      call Modify ourselves. The consent-chasing job in phase 4 is therefore required, not optional.</p>
+      <p><strong>Credentials come with the PoC.</strong> The collection, auth key and consent
+      credentials are all issued when the PoC or demo service is initiated. So the remaining blocker
+      is a commercial step rather than a technical question — there is nothing further to ask.</p>
+      <p><strong>Customer-id.</strong> Telenity say it is returned in the Auth response, though the
+      sample in their document does not show it. We will read it if present and fall back to the
+      Modify response, which does carry <span class="m">customerId</span>. No need to chase this.</p>
+      <p><strong>Positions refresh every 15 minutes</strong> on our account, and we hold
+      <strong>50 licences</strong>. Both are comfortable for a pilot.</p>
+      <p><strong>Accuracy is quoted as 5 metres, but that needs checking.</strong> SmartTrail is a
+      network-based service — Telenity describe it as using "network provided location information",
+      which is cell positioning rather than handset GPS, and is normally hundreds of metres. Their own
+      sample returns an address of district granularity. The answer decides whether we may draw the
+      truck snapped to a road or must keep the looser dotted treatment, so it is worth one minute of
+      the PoC call: fetch a position for someone standing next to you and compare.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Risks worth naming now</h2>
+    <p class="sub">In rough order of how much trouble they cause</p>
+    <ul class="plain">
+      <li><strong>The same API keys work on staging and production.</strong> Telenity confirmed this,
+      which means there is no credential boundary protecting live data from a test run. Our own
+      configuration has to keep the two apart carefully.</li>
+      <li><strong>Consent adoption.</strong> Tracking depends on drivers replying to a text message.
+      If they ignore it, the truck simply never appears. This is an operational problem more than a
+      technical one, and it needs a person chasing it — worth deciding who owns that.</li>
+      <li><strong>Licence quota.</strong> Every registered driver consumes one. If the quota is
+      smaller than the fleet, we need a policy for which trucks get tracked.</li>
+      <li><strong>Refresh rate may disappoint.</strong> Their tracking frequency, not our polling,
+      sets how often a position actually changes. If it is slower than hourly, the trail will be
+      coarser than the mock has led us to expect.</li>
+      <li><strong>Jio has its own rules</strong> — SMS-only consent, 180-day expiry, and a 24-hour
+      lockout if the re-initiate call is repeated. Worth knowing how much of the fleet is on Jio.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Going live</h2>
+    <p class="sub">Three stages, each reversible</p>
+    <p>First, a single test number — someone on the team who can consent on demand and confirm
+    where they actually are. This proves the whole chain end to end and costs one licence.</p>
+    <p>Then one real truck with a willing driver, watched for a couple of days against its FASTag
+    crossings. That comparison is the honest test of whether the SIM trail is trustworthy, because
+    for once we have a second source to check it against.</p>
+    <p>Then the rest of the fleet, at whatever pace consent collection allows. Mock mode stays
+    available throughout, so a demo is never dependent on live credentials.</p>
+  </section>
+
+  <section>
+    <h2>What we can build before the credentials arrive</h2>
+    <p class="sub">Nothing here needs Telenity</p>
+    <p>Two pieces are genuinely unblocked, and between them they cover what the pilot leans on
+    most heavily.</p>
+    <div class="ledger">
+      <div class="row">
+        <div class="k">The driver SIM screen</div>
+        <p class="v"><strong>The recommended first piece</strong>, specified above. The table, the
+        pending-only toggle, the selection and the bulk bar can all be built now against our own
+        database, along with the columns that hold consent state and the Telenity entity id. Only the
+        buttons' underlying calls wait on credentials — so the screen can be finished and reviewed
+        before the PoC, then wired up in an afternoon.</p>
+      </div>
+      <div class="row">
+        <div class="k">Removing the invented accuracy</div>
+        <p class="v">The <span class="m">accuracy_m</span> field I added does not exist in the real
+        API. It runs through the schema, three map popups and a test. Taking it out now, and leaving
+        room for the address text Telenity return instead, avoids carrying a fiction into the pilot.</p>
+      </div>
+      <div class="row">
+        <div class="k">Plain failure reasons</div>
+        <p class="v">Mapping Telenity's result codes to readable text — phone switched off, out of
+        coverage, not provisioned — so that when a truck shows nothing during the pilot, the reason
+        is on screen rather than in a log nobody reads.</p>
+      </div>
+    </div>
+    <p style="margin-top:18px;">Everything else — the client itself, onboarding, consent chasing,
+    polling, removal — waits on the PoC credentials, and should follow quickly once they land.</p>
+  </section>
+
+  <footer>
+    MirchiLime Connect · plan for review · branch simtracking, eight commits, unpushed
+  </footer>
+
+</div>
+</body>
+</html>

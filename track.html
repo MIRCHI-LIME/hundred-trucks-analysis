@@ -607,7 +607,7 @@
       }
       if (currentCoord) {
         const popup = simIsFresher
-          ? `<b>📍 Current Location</b><br>Driver SIM${lastCross ? ' · past ' + lastCross.plaza : ''}<br><span style="color:#888;font-size:11px;">${fmtTime(lastSim.pinged_at)}${lastSim.accuracy_m ? ` · ±${lastSim.accuracy_m}m` : ''}</span>`
+          ? `<b>📍 Current Location</b><br>${lastSim.address || (lastCross ? 'Past ' + lastCross.plaza : 'Driver SIM')}<br><span style="color:#888;font-size:11px;">${fmtTime(lastSim.pinged_at)} · via driver SIM</span>`
           : `<b>📍 Current Location</b><br>${lastCross.plaza}<br><span style="color:#888;font-size:11px;">${fmtTime(lastCross.crossed_at)}</span>`;
 
         // point the truck along the last leg it actually travelled
