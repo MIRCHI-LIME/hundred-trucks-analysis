@@ -372,6 +372,41 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             release_db(con)
             self._json({'vehicle_no': vno, **res})
 
+        elif self.path.startswith('/api/ping-truck'):
+            # force one truck's FASTag crossings now, instead of waiting for a
+            # scheduler that (locally) doesn't exist
+            qs  = parse_qs(urlparse(self.path).query)
+            vno = qs.get('vehicle_no', [''])[0].strip().upper()
+            if not vno:
+                self._json({'error': 'missing vehicle_no'}); return
+            try:
+                records = fetch_zoho(vno)
+                new_rows = save_crossings(vno, records)
+                cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
+                self._json({'vehicle_no': vno, 'total': len(records), 'new': new_rows})
+            except Exception as e:
+                self._json({'error': str(e)})
+
+        elif self.path.startswith('/api/ping-all-connected'):
+            # same, for every truck currently marked is_connected=1 — the local-dev
+            # equivalent of wsgi.py's hourly ping_enroute job
+            con = get_db(); cur = con.cursor()
+            cur.execute('SELECT vehicle_no FROM trucks WHERE is_connected=1')
+            trucks = [r[0] for r in cur.fetchall()]; release_db(con)
+            done = failed = new_total = 0
+            for vno in trucks:
+                try:
+                    records = fetch_zoho(vno)
+                    new_total += save_crossings(vno, records)
+                    done += 1
+                except Exception as e:
+                    failed += 1
+                    print(f'[ping-all] {vno}: {e}', flush=True)
+                time.sleep(1)
+            with _cache_lock:
+                _cache.clear()
+            self._json({'trucks': len(trucks), 'done': done, 'failed': failed, 'new_crossings': new_total})
+
         elif self.path.startswith('/api/sync-enroute'):
             # local-dev equivalent of the hourly sync wsgi.py runs in production
             try:
@@ -507,6 +542,43 @@ def ensure_enroute_trips_table():
     con.commit(); release_db(con)
 
 ENROUTE_TRIPS_URL = 'https://www.zohoapis.in/creator/custom/mirchi-lime/Fetch_Enroute_Trips?publickey=2yHyzpgDNmJgHtdJCKR1jCb8b'
+FASTAG_URL        = 'https://www.zohoapis.in/creator/custom/mirchi-lime/Fetch_Fast_Tag_Data?publickey=m2H9YHHA901WRUOAAFRY04WzD'
+
+def fetch_zoho(vehicle_no):
+    """Toll crossings for one truck, straight from Zoho. Same call wsgi.py makes hourly."""
+    body = json.dumps({'vehicle_no': vehicle_no}).encode()
+    req  = urllib.request.Request(FASTAG_URL, data=body, headers={'Content-Type': 'application/json'})
+    resp = urllib.request.urlopen(req, timeout=15)
+    return json.loads(resp.read()).get('result', {}).get('data', [])
+
+def save_crossings(vehicle_no, records):
+    """Insert new crossings (deduped on vehicle+plaza+time) and stamp fetched_at."""
+    con = get_db(); cur = con.cursor()
+    saved = 0
+    for r in records:
+        plaza      = r.get('tollPlazaName', '').strip()
+        crossed_at = r.get('readerReadTime', '').strip()
+        geocode    = r.get('tollPlazaGeocode', '')
+        lat, lng   = 0, 0
+        if geocode and ',' in geocode:
+            parts = geocode.split(',')
+            try: lat, lng = float(parts[0]), float(parts[1])
+            except ValueError: pass
+        if not plaza or not crossed_at:
+            continue
+        cur.execute('SELECT 1 FROM crossings WHERE vehicle_no=%s AND plaza=%s AND crossed_at=%s',
+                    (vehicle_no, plaza, crossed_at))
+        if not cur.fetchone():
+            cur.execute('''INSERT INTO crossings
+                           (vehicle_no, plaza, lat, lng, direction, seq_no, vehicle_type, crossed_at)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s)''',
+                        (vehicle_no, plaza, lat, lng, r.get('laneDirection', '').strip(),
+                         str(r.get('seqNo', '')), r.get('vehicleType', '').strip(), crossed_at))
+            saved += 1
+    cur.execute('UPDATE trucks SET fetched_at=%s WHERE vehicle_no=%s',
+                (time.strftime('%Y-%m-%d %H:%M:%S'), vehicle_no))
+    con.commit(); release_db(con)
+    return saved
 
 def sync_enroute_trips():
     """
