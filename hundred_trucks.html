@@ -1182,8 +1182,11 @@ function renderJourneyMap(crossings, simPings) {
     // before any toll confirms it. Raw points (never road-snapped: cell fixes are ±300m–2km).
     // Drawn first, so a confirming toll crossing paints over it.
     const simCoords = simValid.map(p => [parseFloat(p.lat), parseFloat(p.lng)]);
-    if (simCoords.length > 1)
-      L.polyline(simCoords, { color:'#2f6fd4', weight:4, opacity:0.95, dashArray:'2,8', lineCap:'round' }).addTo(map);
+    // anchor at the last confirmed toll so the dotted line bridges from there, not just
+    // between SIM pings — a single ping otherwise draws no line at all
+    const simTrail = coords.length ? [coords[coords.length - 1], ...simCoords] : simCoords;
+    if (simTrail.length > 1)
+      L.polyline(simTrail, { color:'#2f6fd4', weight:4, opacity:0.95, dashArray:'2,8', lineCap:'round' }).addTo(map);
 
     // toll route solid — a crossing confirms the truck really was there
     if (outCoords.length > 1)
@@ -2542,8 +2545,12 @@ function lrDrawMarkers(truckData, filterVno) {
       // so snapping would invent a road the truck may never have been on.
       const simPings = (td.simPings || []).filter(p => p.lat && p.lng);
       const simPts   = simPings.map(p => [p.lat, p.lng]);
-      if (simPts.length > 1) {
-        L.polyline(simPts, { color, weight: 4, opacity: 0.95, dashArray: '2,8', lineCap: 'round' }).addTo(liveRoutesMap);
+      // anchor the trail at the last confirmed toll, so the dotted line actually bridges
+      // "last place we know for certain" to "where the SIM says it is now" — without this,
+      // a single SIM ping (the common case early on) draws no line at all
+      const trailPts = last ? [[last.lat, last.lng], ...simPts] : simPts;
+      if (trailPts.length > 1) {
+        L.polyline(trailPts, { color, weight: 4, opacity: 0.95, dashArray: '2,8', lineCap: 'round' }).addTo(liveRoutesMap);
       }
       simPings.forEach(p => {
         L.circleMarker([p.lat, p.lng], { radius: 4, fillColor: color, color: '#fff', weight: 1.5, fillOpacity: 1 })
