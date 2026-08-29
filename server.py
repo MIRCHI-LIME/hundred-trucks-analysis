@@ -327,7 +327,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             try:
                 res = sim_location.assign_sim(con, vno, msisdn, driver)
             except Exception as e:
-                release_db(con); self._json({'error': str(e)}); return
+                release_db(con)
+                print(f'[set-sim] {vno} {msisdn}: {e}', flush=True)
+                self._json({'error': str(e)}); return
             release_db(con)
             cache_drop(f'truck-detail-{vno}', 'hundred-trucks')
             self._json({'status': 'assigned', 'vehicle_no': vno, 'msisdn': msisdn,
@@ -369,6 +371,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             res = sim_location.resend_consent(con, vno)
             release_db(con)
             self._json({'vehicle_no': vno, **res})
+
+        elif self.path.startswith('/api/sync-enroute'):
+            # local-dev equivalent of the hourly sync wsgi.py runs in production
+            try:
+                summary = sync_enroute_trips()
+                self._json({'status': 'synced', **summary})
+            except Exception as e:
+                self._json({'error': str(e)})
 
         elif self.path.startswith('/api/sweep-consents'):
             qs  = parse_qs(urlparse(self.path).query)
@@ -489,7 +499,81 @@ def ensure_enroute_trips_table():
         )
     ''')
     cur.execute("ALTER TABLE enroute_trips ADD COLUMN IF NOT EXISTS reporting_time TEXT")
+    # these three exist in production (wsgi.py) already; added here so sync_enroute_trips,
+    # which is new to server.py, has the columns it references
+    cur.execute("ALTER TABLE enroute_trips ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE enroute_trips ADD COLUMN IF NOT EXISTS trip_status TEXT DEFAULT 'active'")
+    cur.execute("ALTER TABLE trucks ADD COLUMN IF NOT EXISTS is_manual BOOLEAN DEFAULT FALSE")
     con.commit(); release_db(con)
+
+ENROUTE_TRIPS_URL = 'https://www.zohoapis.in/creator/custom/mirchi-lime/Fetch_Enroute_Trips?publickey=2yHyzpgDNmJgHtdJCKR1jCb8b'
+
+def sync_enroute_trips():
+    """
+    Pull live trips from Zoho into the local enroute_trips table — same logic as
+    wsgi.py's version (production runs this hourly via the scheduler). server.py
+    has no scheduler, so this exists to be called on demand: GET /api/sync-enroute.
+    """
+    print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Syncing enroute trips from Zoho...', flush=True)
+    req  = urllib.request.Request(ENROUTE_TRIPS_URL)
+    resp = urllib.request.urlopen(req, timeout=15)
+    data = json.loads(resp.read())
+    trips = data.get('result', {}).get('data', [])
+
+    con = get_db(); cur = con.cursor()
+    cur.execute('DELETE FROM enroute_trips WHERE is_manual IS NOT TRUE')
+
+    # same truck appearing more than once: keep only its latest reporting_date
+    deduped = {}
+    for t in trips:
+        vno = t.get('truck_number', '').strip()
+        if not vno:
+            continue
+        lp = t.get('loading_points', [{}])[0]
+        rep_date = lp.get('reporting_date', '').strip()
+        if vno not in deduped or rep_date > deduped[vno]['_rep_date']:
+            t['_rep_date'] = rep_date
+            deduped[vno] = t
+    trips = list(deduped.values())
+
+    zoho_vnos = set()
+    new_trucks = 0
+    for t in trips:
+        vno    = t.get('truck_number', '').strip()
+        tranco = t.get('tranco', '').strip()
+        lp     = t.get('loading_points', [{}])[0]
+        zoho_vnos.add(vno)
+        rt = lp.get('reporting_time', '')
+        rt = rt.get('SQLTime', '') if isinstance(rt, dict) else str(rt).strip()
+        cur.execute('''INSERT INTO enroute_trips
+                       (truck_no, tranco, shipper, trip_id, indent_number, pickup_pin,
+                        drop_pin, loading_point, reporting_date, reporting_time, synced_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())''',
+                    (vno, tranco, t.get('shipper', '').strip(), t.get('trip_id', '').strip(),
+                     t.get('indent_number', '').strip(), t.get('pickup_pincode', '').strip(),
+                     t.get('drop_pincode', '').strip(), lp.get('loading_point', '').strip(),
+                     lp.get('reporting_date', '').strip(), rt))
+        cur.execute('SELECT 1 FROM trucks WHERE vehicle_no=%s', (vno,))
+        if not cur.fetchone():
+            state = vno[:2].upper() if len(vno) >= 2 else 'TN'
+            cur.execute('INSERT INTO trucks (vehicle_no, owner, state, is_connected, is_manual) '
+                        'VALUES (%s,%s,%s,1,FALSE)', (vno, tranco, state))
+            new_trucks += 1
+        else:
+            cur.execute('UPDATE trucks SET is_connected=1, owner=%s WHERE vehicle_no=%s', (tranco, vno))
+
+    removed_trucks = 0
+    cur.execute('SELECT vehicle_no FROM trucks WHERE is_connected=1 AND is_manual IS NOT TRUE')
+    for (db_vno,) in cur.fetchall():
+        if db_vno not in zoho_vnos:
+            cur.execute('UPDATE trucks SET is_connected=0 WHERE vehicle_no=%s', (db_vno,))
+            removed_trucks += 1
+    con.commit(); release_db(con)
+    with _cache_lock:
+        _cache.clear()
+    summary = {'trips': len(trips), 'new_trucks': new_trucks, 'disconnected': removed_trucks}
+    print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Enroute sync done: {summary}', flush=True)
+    return summary
 
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))

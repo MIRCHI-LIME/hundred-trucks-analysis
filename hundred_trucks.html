@@ -1387,8 +1387,11 @@ function renderSimList() {
             ${r.last_error ? `<div style="font-weight:500;font-size:11px;color:var(--ml-muted-2);">${r.last_error}</div>` : ''}</td>
           <td style="padding:11px 14px 11px 0;color:var(--ml-muted-2);">${r.valid_till || '—'}</td>
           <td style="padding:11px 0;white-space:nowrap;">
+            ${r.state === 'tracking' ? `
+            <button onclick="fetchPosition('${r.vehicle_no}', this)"
+              style="background:var(--ml-olive-tint);color:var(--ml-olive-text);border:none;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;">Fetch position</button>` : ''}
             <button ${dis} title="${tip}" onclick="resendConsent('${r.vehicle_no}')"
-              style="background:var(--ml-bg);color:var(--ml-text);border:1px solid var(--ml-border);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:${r.can_resend?'pointer':'not-allowed'};opacity:${r.can_resend?1:0.4};">Resend</button>
+              style="background:var(--ml-bg);color:var(--ml-text);border:1px solid var(--ml-border);border-radius:7px;padding:4px 10px;font-size:11px;font-weight:700;cursor:${r.can_resend?'pointer':'not-allowed'};opacity:${r.can_resend?1:0.4};margin-left:4px;">Resend</button>
             <button onclick="deleteSim('${r.vehicle_no}')"
               style="background:var(--ml-terra-tint);color:var(--ml-terra-text);border:none;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;margin-left:4px;">Delete</button>
           </td></tr>`;
@@ -1418,6 +1421,25 @@ async function resendConsent(vno) {
   const d = await r.json();
   if (!d.ok) alert(d.message || 'Could not resend');
   await loadSimList();
+}
+
+async function fetchPosition(vno, btn) {
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Fetching…';
+  try {
+    const r = await fetch(`${API}/api/ping-sims?vehicle_no=${encodeURIComponent(vno)}`);
+    const d = await r.json();
+    await loadSimList();
+    if (d.pinged > 0) {
+      alert(`Position fetched for ${vno} — see it on the Live Routes or Trucks map.`);
+    } else {
+      const row = simRows.find(x => x.vehicle_no === vno);
+      alert(`No position yet for ${vno}.\n\n${row?.last_error || 'Telenity say the first fix can take 2–3 minutes.'}`);
+    }
+  } catch (e) {
+    alert('Could not reach the server.');
+    btn.disabled = false; btn.textContent = label;
+  }
 }
 
 async function deleteSim(vno) {

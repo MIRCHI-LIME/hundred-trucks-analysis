@@ -31,10 +31,16 @@ _TRAIL_TTL = 5 * 3600
 _AGW_MARGIN = 120
 
 class TelenityError(Exception):
-    """An API call failed in a way the caller should know about."""
+    """
+    An API call failed in a way the caller should know about.
+    str(e) includes the HTTP status and raw body — without that, a caller that
+    only prints str(e) (server.py's except blocks do exactly this) shows nothing
+    but a generic fallback message and the real cause is lost.
+    """
     def __init__(self, message, status=None, body=None):
-        super().__init__(message)
         self.status, self.body = status, body
+        detail = f' [HTTP {status}] {json.dumps(body)[:300]}' if status is not None else ''
+        super().__init__(f'{message}{detail}')
 
 # Location result codes, section 4.5.4, mapped once so nothing downstream sees raw numbers.
 RESULT_CODES = {
@@ -241,16 +247,21 @@ def jio_reinitiate(msisdn):
 def _parse_terminal(node):
     cur = node.get('currentLocation') or {}
     code = node.get('locationResultStatus')
+    retrieved = node.get('locationRetrievalStatus') == 'Retrieved'
+    # A code of 0 normally means Success, but Telenity also send code 0 alongside
+    # "Not Retrieved" while the first fix is still being computed — showing that
+    # combination as status_text "Success" would read as a fix that never arrived.
+    text = 'No fix yet — still being computed' if (not retrieved and not code) else result_text(code)
     return {
         'msisdn':     (node.get('address') or '').replace('tel:+', ''),
         'entity_id':  node.get('entityId'),
-        'retrieved':  node.get('locationRetrievalStatus') == 'Retrieved',
+        'retrieved':  retrieved,
         'lat':        cur.get('latitude'),
         'lng':        cur.get('longitude'),
         'address':    cur.get('detailedAddress'),
         'timestamp':  cur.get('timestamp'),
         'status':     code,
-        'status_text': result_text(code),
+        'status_text': text,
     }
 
 def location(msisdn, last_result=True):
