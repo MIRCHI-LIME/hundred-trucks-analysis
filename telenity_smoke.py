@@ -95,7 +95,7 @@ def main():
     if input('   Type "yes" to continue: ').strip().lower() != 'yes':
         say('   stopped, nothing sent'); return 0
     try:
-        res = telenity.import_entity(msisdn, name.split()[0], ' '.join(name.split()[1:]) or 'Driver')
+        res = telenity.import_entity(msisdn, name.split()[0], ' '.join(name.split()[1:]) or 'Last')
     except telenity.TelenityError as e:
         say(f'{R}   import failed: {e}{X}'); return 1
     say(f"   {G}registered{X}  entity {res['entity_id']}  ·  already tracked: {res['is_tracked']}")

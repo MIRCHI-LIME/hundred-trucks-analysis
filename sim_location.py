@@ -162,7 +162,7 @@ def assign_sim(con, vehicle_no, msisdn, driver_name='', source='manual'):
         # "Unknown Error : BadRequestException" — confirmed by testing "." against
         # their live API. A real word, even a filler one, is required.
         name = (driver_name or 'Driver').split()
-        res = telenity.import_entity(msisdn, name[0], ' '.join(name[1:]) or 'Driver')
+        res = telenity.import_entity(msisdn, name[0], ' '.join(name[1:]) or 'Last')
         entity_id, tracking = res['entity_id'], res['is_tracked']
         # a driver who consented by IVR beforehand comes back already tracked
         consent = 'ALLOWED' if tracking else 'PENDING'
