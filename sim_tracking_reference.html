@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dotted and Solid</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root {
+  --ground:      #E4EAEF;
+  --shell:       #F4F7F9;
+  --panel:       #FFFFFF;
+  --ink:         #101820;
+  --text:        #2A3641;
+  --muted:       #59697A;
+  --rule:        #CBD7E0;
+  --rule-soft:   #DDE6EC;
+  --gold:        #1C86C7;
+  --gold-deep:   #085E90;
+  --olive:       #17805A;
+  --terra:       #A8591A;
+  --blue:        #0A6CA8;
+  --code-bg:     #EAF1F5;
+  --shadow:      0 30px 60px -30px rgba(16,24,32,0.25);
+  --display: 'Bricolage Grotesque', ui-sans-serif, system-ui, sans-serif;
+  --body:    'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  --mono:    'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0A0F15; --shell: #10161D; --panel: #151D25;
+    --ink: #EAF2F7; --text: #C6D3DC; --muted: #7C8D9A;
+    --rule: #223038; --rule-soft: #1A252D;
+    --gold: #5EC1F0; --gold-deep: #4FB4E8;
+    --olive: #3FCE93; --terra: #E5A25A; --blue: #5EC1F0;
+    --code-bg: #0D141B;
+    --shadow: 0 30px 64px -32px rgba(0,0,0,0.85);
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0A0F15; --shell: #10161D; --panel: #151D25;
+  --ink: #EAF2F7; --text: #C6D3DC; --muted: #7C8D9A;
+  --rule: #223038; --rule-soft: #1A252D;
+  --gold: #5EC1F0; --gold-deep: #4FB4E8;
+  --olive: #3FCE93; --terra: #E5A25A; --blue: #5EC1F0;
+  --code-bg: #0D141B;
+  --shadow: 0 30px 64px -32px rgba(0,0,0,0.85);
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--ground); color: var(--text); font-family: var(--body);
+  font-size: 16px; line-height: 1.65; margin: 0; -webkit-font-smoothing: antialiased;
+  display: flex; min-height: 100vh;
+}
+
+/* ── sidebar ──────────────────────────────────────────────────────────── */
+.sidebar {
+  position: sticky; top: 0; align-self: flex-start; height: 100vh; width: 246px;
+  flex: 0 0 246px; overflow-y: auto; padding: 30px 22px 40px;
+  border-right: 1px solid var(--rule); background: var(--shell);
+}
+.sb-brand { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--ink); margin: 0 0 2px; }
+.sb-sub   { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 0 0 26px; }
+.sb-group { margin-bottom: 20px; }
+.sb-h { font-family: var(--mono); font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; padding-left: 10px; }
+.sb-link {
+  display: block; font-size: 13.5px; color: var(--text); text-decoration: none;
+  padding: 6px 10px; border-radius: 8px; border-left: 2px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sb-link:hover { background: var(--panel); color: var(--ink); }
+.sb-link.active { color: var(--gold-deep); border-left-color: var(--gold); background: var(--panel); font-weight: 600; }
+.sb-toggle {
+  margin-top: 4px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule);
+  border-radius: 999px; padding: 5px 12px; background: var(--panel); cursor: pointer;
+}
+
+.main { flex: 1; min-width: 0; padding: 54px 60px 120px; max-width: 980px; }
+.mainwrap { max-width: 760px; }
+section[id] { scroll-margin-top: 24px; }
+
+.eyebrow { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(36px, 5vw, 52px); line-height: 1.03; letter-spacing: -0.025em; color: var(--ink); text-wrap: balance; margin: 0 0 18px; }
+.standfirst { font-size: 18px; line-height: 1.62; color: var(--text); max-width: 64ch; margin: 0 0 30px; }
+
+h2 { font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -0.015em; color: var(--ink); text-wrap: balance; margin: 0 0 4px; }
+h3 { font-family: var(--display); font-weight: 600; font-size: 16px; color: var(--ink); margin: 26px 0 8px; }
+h3:first-child { margin-top: 0; }
+p { margin: 0 0 14px; max-width: 68ch; }
+p:last-child { margin-bottom: 0; }
+strong { color: var(--ink); }
+
+.mainblock { margin-top: 64px; padding-top: 34px; border-top: 1px solid var(--rule); }
+.mainblock:first-of-type { margin-top: 0; padding-top: 0; border-top: none; }
+.sub { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 22px; }
+
+code, .m { font-family: var(--mono); font-size: 0.87em; background: var(--code-bg); border: 1px solid var(--rule-soft); border-radius: 5px; padding: 1.5px 5px; color: var(--ink); word-break: break-word; }
+pre { font-family: var(--mono); font-size: 12.8px; line-height: 1.68; background: var(--code-bg); border: 1px solid var(--rule-soft); border-radius: 12px; padding: 16px 18px; overflow-x: auto; margin: 0 0 16px; color: var(--ink); }
+pre code { background: none; border: none; padding: 0; font-size: inherit; }
+
+/* ── stat grid ────────────────────────────────────────────────────────── */
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; margin: 30px 0 0; }
+.stat { background: var(--panel); padding: 16px 16px 14px; }
+.stat .n { font-family: var(--display); font-weight: 800; font-size: 26px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stat .l { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); margin-top: 3px; }
+
+/* ── diagrams ─────────────────────────────────────────────────────────── */
+figure.diagram { background: var(--panel); border: 1px solid var(--rule); border-radius: 16px; padding: 24px 22px 18px; margin: 24px 0 0; overflow-x: auto; }
+figure.diagram svg { display: block; width: 100%; min-width: 620px; height: auto; color: var(--ink); }
+figure.diagram figcaption { font-size: 13px; color: var(--muted); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--rule-soft); max-width: 68ch; }
+.dg-box   { fill: var(--code-bg); stroke: var(--rule); stroke-width: 1.5; }
+.dg-box2  { fill: var(--panel); stroke: var(--rule); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.dg-gate  { fill: none; stroke: var(--terra); stroke-width: 1.8; stroke-dasharray: 5 4; }
+.dg-num   { fill: var(--gold); }
+.dg-numtx { fill: var(--panel); font-family: var(--body); font-size: 10.5px; font-weight: 800; }
+.dg-label { fill: var(--ink); font-family: var(--body); font-size: 12.5px; font-weight: 700; }
+.dg-cap   { fill: var(--muted); font-family: var(--mono); font-size: 9px; letter-spacing: 0.02em; }
+.dg-arrow { stroke: var(--rule); stroke-width: 1.6; fill: none; }
+.dg-arrow2{ stroke: var(--muted); stroke-width: 1.4; fill: none; stroke-dasharray: 3 3; }
+.dg-note  { fill: var(--terra); font-family: var(--body); font-size: 10.5px; font-weight: 700; }
+.dg-solid { stroke: var(--gold-deep); stroke-width: 5; fill: none; stroke-linecap: round; }
+.dg-dot   { stroke: var(--blue); stroke-width: 4; fill: none; stroke-linecap: round; stroke-dasharray: 1.5 7; }
+.dg-pt    { fill: var(--ink); }
+.dg-pt-blue { fill: var(--blue); }
+
+/* ── ledger / steps / notes ───────────────────────────────────────────── */
+.ledger { display: flex; flex-direction: column; }
+.row { display: grid; grid-template-columns: 200px 1fr; gap: 20px; padding: 13px 0; border-bottom: 1px solid var(--rule-soft); align-items: start; }
+.row:first-child { border-top: 1px solid var(--rule-soft); }
+.row .k { font-family: var(--mono); font-size: 12px; color: var(--gold-deep); font-weight: 500; word-break: break-word; }
+.row .v { margin: 0; font-size: 14px; line-height: 1.55; }
+
+ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 22px; }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 32px 1fr; gap: 14px; }
+ol.steps > li::before { content: counter(s); font-family: var(--mono); font-size: 11.5px; color: var(--gold-deep); border: 1px solid var(--rule); border-radius: 50%; width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; background: var(--panel); }
+ol.steps .body > p:first-of-type { margin-top: 2px; }
+
+.chip { display: inline-block; font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; border: 1px solid currentColor; margin-left: 6px; vertical-align: 2px; }
+.chip.ok   { color: var(--olive); }
+.chip.bad  { color: var(--terra); }
+.chip.mock { color: var(--muted); }
+
+.note { background: var(--panel); border: 1px solid var(--rule); border-left: 3px solid var(--gold); border-radius: 0 12px 12px 0; padding: 15px 19px; margin: 20px 0 0; }
+.note.bug { border-left-color: var(--terra); }
+.note p { font-size: 14px; margin-bottom: 7px; }
+.note p:last-child { margin-bottom: 0; }
+.note .h { font-family: var(--display); font-weight: 700; color: var(--ink); font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
+
+/* ── tables ───────────────────────────────────────────────────────────── */
+.tbl-wrap { overflow-x: auto; margin: 20px 0 0; }
+table { border-collapse: collapse; width: 100%; min-width: 480px; font-size: 13.5px; }
+th, td { text-align: left; padding: 9px 14px 9px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+th { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 400; border-bottom-color: var(--rule); }
+td:first-child, td.mono { font-family: var(--mono); font-size: 12px; color: var(--gold-deep); padding-right: 18px; white-space: nowrap; }
+td.wrap:first-child { white-space: normal; }
+td.dim { color: var(--muted); }
+
+/* ── module cards ─────────────────────────────────────────────────────── */
+.module { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 20px 22px; margin: 18px 0 0; }
+.module-hd { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.module-fn { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--ink); }
+.module-tag { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--rule); border-radius: 999px; padding: 2px 9px; }
+.module-tag.new { color: var(--olive); border-color: currentColor; }
+.module-loc { font-family: var(--mono); font-size: 11px; color: var(--muted); margin-left: auto; }
+.module-bd p { font-size: 14px; }
+.module-fns { font-size: 13px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--rule-soft); }
+.module-fns .fn { font-family: var(--mono); color: var(--gold-deep); }
+
+/* ── file tree ────────────────────────────────────────────────────────── */
+.ftree { background: var(--code-bg); border: 1px solid var(--rule-soft); border-radius: 12px; padding: 18px 20px; margin: 20px 0 0; overflow-x: auto; }
+.ftree pre { background: none; border: none; padding: 0; margin: 0; font-size: 12.5px; }
+.ftree .new  { color: var(--olive); }
+.ftree .chg  { color: var(--gold-deep); }
+.ftree .dim  { color: var(--muted); }
+
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+@media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+.legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13.5px; }
+.legend-swatch { width: 22px; height: 4px; border-radius: 2px; flex-shrink: 0; }
+.legend-swatch.dot { border-top: 4px dotted var(--blue); background: none; height: 0; }
+
+footer { margin-top: 60px; padding-top: 22px; border-top: 1px solid var(--rule); font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.04em; color: var(--muted); }
+a { color: var(--gold-deep); text-underline-offset: 2px; }
+a:focus-visible, .sb-link:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 3px; }
+
+@media (max-width: 900px) {
+  body { flex-direction: column; }
+  .sidebar { position: static; height: auto; width: 100%; flex-basis: auto; border-right: none; border-bottom: 1px solid var(--rule); padding: 18px 20px; }
+  .sb-group { margin-bottom: 0; }
+  .sb-links { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+  .sb-h { display: none; }
+  .sb-link { white-space: nowrap; border-left: none; border-bottom: 2px solid transparent; border-radius: 0; }
+  .sb-link.active { border-left: none; border-bottom-color: var(--gold); }
+  .main { padding: 40px 24px 80px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<nav class="sidebar" aria-label="Sections">
+  <p class="sb-brand">Dotted and solid</p>
+  <p class="sb-sub">SIM tracking · as built</p>
+  <div class="sb-links">
+    <div class="sb-group">
+      <p class="sb-h">Start</p>
+      <a class="sb-link" href="#overview">Overview</a>
+      <a class="sb-link" href="#architecture">Architecture</a>
+    </div>
+    <div class="sb-group">
+      <p class="sb-h">What changed</p>
+      <a class="sb-link" href="#database">Database</a>
+      <a class="sb-link" href="#drawing">Map drawing logic</a>
+    </div>
+    <div class="sb-group">
+      <p class="sb-h">Telenity</p>
+      <a class="sb-link" href="#telenity">The integration</a>
+    </div>
+    <div class="sb-group">
+      <p class="sb-h">Reference</p>
+      <a class="sb-link" href="#files">File by file</a>
+      <a class="sb-link" href="#api">API endpoints</a>
+      <a class="sb-link" href="#config">Configuration</a>
+      <a class="sb-link" href="#ops">Running in production</a>
+      <a class="sb-link" href="#testing">Testing</a>
+      <a class="sb-link" href="#gaps">Open items</a>
+    </div>
+  </div>
+  <button class="sb-toggle" id="themeToggle" type="button">Toggle theme</button>
+</nav>
+
+<main class="main">
+<div class="mainwrap">
+
+  <section id="overview">
+    <p class="eyebrow">MirchiLime Connect · reference document</p>
+    <h1>Dotted and solid.</h1>
+    <p class="standfirst">
+      Every truck already had a position source — FASTag toll crossings, sparse but certain.
+      This adds a second, independent one: the driver's own phone, tracked through Telenity's
+      SmartTrail network API. Both are drawn on the same map, and neither is ever allowed to
+      masquerade as the other — a <strong>solid</strong> line for what a toll crossing has
+      confirmed, a <strong>dotted</strong> one for where the SIM says the truck has got to
+      since. This is the reference for what actually shipped: schema, rendering logic, the
+      Telenity integration, and every file that changed to build it.
+    </p>
+  </section>
+
+  <section id="architecture" class="mainblock">
+    <h2>How the pieces fit</h2>
+    <p class="sub">SYSTEM OVERVIEW</p>
+    <p>
+      The two position sources never touch each other. Each has its own external API, its own
+      poller, its own table, and its own failure mode — the only place they meet is the map,
+      which reads both and draws two lines. That separation is deliberate: a bug in the SIM
+      pipeline can't corrupt a toll crossing, and vice versa.
+    </p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 860 460" role="img" aria-label="Two independent pipelines. Left: Zoho FASTag Creator API is polled hourly by ping_enroute, which writes confirmed rows to the crossings table. Right: Telenity SmartTrail API is polled every thirty minutes by ping_sims, which sweeps consent then writes a sim_pings row only when a fix actually retrieves. Both tables are read together by three API endpoints, which feed three surfaces: the Live Routes map, the Journey Timeline, and the public track page — each rendering a solid confirmed line and a dotted leading line.">
+        <!-- sources -->
+        <rect class="dg-box" x="20"  y="16" width="340" height="46" rx="9"/>
+        <rect class="dg-box" x="500" y="16" width="340" height="46" rx="9"/>
+        <text class="dg-label" x="40"  y="44">Zoho FASTag Creator API</text>
+        <text class="dg-label" x="520" y="44">Telenity SmartTrail API</text>
+
+        <!-- arrows down to pollers -->
+        <path class="dg-arrow" d="M190 62 L190 90"/><path class="dg-arrow" d="M185 84 L190 92 L195 84"/>
+        <path class="dg-arrow" d="M670 62 L670 90"/><path class="dg-arrow" d="M665 84 L670 92 L675 84"/>
+        <text class="dg-cap" x="196" y="80">polls hourly, 6&#8211;23 IST</text>
+        <text class="dg-cap" x="676" y="80">polls every 30 min, 6&#8211;23 IST</text>
+
+        <!-- pollers -->
+        <rect class="dg-box" x="20"  y="92" width="340" height="50" rx="9"/>
+        <rect class="dg-box" x="500" y="92" width="340" height="50" rx="9"/>
+        <text class="dg-label" x="40"  y="114">ping_enroute()</text>
+        <text class="dg-cap"   x="40"  y="132">fetch_zoho() per connected truck</text>
+        <text class="dg-label" x="520" y="114">ping_sims()</text>
+        <text class="dg-cap"   x="520" y="132">sweep_consents() then poll_sims()</text>
+
+        <!-- arrows down to tables -->
+        <path class="dg-arrow" d="M190 142 L190 170"/><path class="dg-arrow" d="M185 164 L190 172 L195 164"/>
+        <path class="dg-arrow" d="M670 142 L670 170"/><path class="dg-arrow" d="M665 164 L670 172 L675 164"/>
+        <text class="dg-cap" x="196" y="160">writes every crossing seen</text>
+        <text class="dg-cap" x="676" y="160">writes only when a fix retrieves</text>
+
+        <!-- tables -->
+        <rect class="dg-box" x="20"  y="172" width="340" height="50" rx="9"/>
+        <rect class="dg-box" x="500" y="172" width="340" height="50" rx="9"/>
+        <text class="dg-label" x="40"  y="194">crossings</text>
+        <text class="dg-cap"   x="40"  y="212">one row per toll plaza passed</text>
+        <text class="dg-label" x="520" y="194">sim_pings + truck_sims</text>
+        <text class="dg-cap"   x="520" y="212">fixes, plus consent / tracking state</text>
+
+        <!-- converge -->
+        <path class="dg-arrow" d="M190 222 L190 250 L410 250 L410 270"/>
+        <path class="dg-arrow" d="M670 222 L670 250 L450 250 L450 270"/>
+        <path class="dg-arrow" d="M405 264 L410 272 L415 264"/>
+        <path class="dg-arrow" d="M445 264 L450 272 L415 264"/>
+        <text class="dg-cap" x="290" y="246">read together, never merged</text>
+
+        <!-- read layer -->
+        <rect class="dg-box2" x="230" y="276" width="400" height="56" rx="10"/>
+        <text class="dg-label" x="250" y="298">/api/hundred-truck-detail &#183; /api/track &#183; /api/hundred-trucks</text>
+        <text class="dg-cap"   x="250" y="316">embeds sim + sim_pings; has_sim flag on the fleet list</text>
+
+        <!-- fan out -->
+        <path class="dg-arrow" d="M300 332 L300 356 L130 356 L130 376"/>
+        <path class="dg-arrow" d="M430 332 L430 376"/>
+        <path class="dg-arrow" d="M560 332 L560 356 L730 356 L730 376"/>
+        <path class="dg-arrow" d="M125 370 L130 378 L135 370"/>
+        <path class="dg-arrow" d="M425 370 L430 378 L435 370"/>
+        <path class="dg-arrow" d="M725 370 L730 378 L735 370"/>
+
+        <!-- surfaces -->
+        <rect class="dg-box" x="20"  y="380" width="220" height="60" rx="9"/>
+        <rect class="dg-box" x="320" y="380" width="220" height="60" rx="9"/>
+        <rect class="dg-box" x="620" y="380" width="220" height="60" rx="9"/>
+        <text class="dg-label" x="38"  y="406">Live Routes map</text>
+        <text class="dg-label" x="338" y="406">Journey Timeline</text>
+        <text class="dg-label" x="638" y="406">Public track.html</text>
+        <text class="dg-cap" x="38"  y="424">hundred_trucks.html</text>
+        <text class="dg-cap" x="338" y="424">hundred_trucks.html</text>
+        <text class="dg-cap" x="638" y="424">token-based, per truck</text>
+        <text class="dg-note" x="20" y="452">each surface draws both lines independently — solid crossings, dotted SIM trail</text>
+      </svg>
+      <figcaption>The two pipelines never share code or state until a read. A failure in one can't corrupt the other — the worst a broken Telenity call can do is leave <code>sim_pings</code> stale; the toll route keeps drawing regardless.</figcaption>
+    </figure>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Layer</th><th>Toll crossings (existing)</th><th>Driver SIM (new)</th></tr></thead>
+        <tbody>
+          <tr><td class="wrap">External API</td><td>Zoho FASTag Creator app</td><td>Telenity SmartTrail</td></tr>
+          <tr><td class="wrap">Client module</td><td><code>fetch_zoho()</code> in each backend</td><td><code>telenity.py</code> (new)</td></tr>
+          <tr><td class="wrap">Domain module</td><td>inline in <code>wsgi.py</code>/<code>server.py</code></td><td><code>sim_location.py</code> (new)</td></tr>
+          <tr><td class="wrap">Table</td><td><code>crossings</code></td><td><code>sim_pings</code> + <code>truck_sims</code></td></tr>
+          <tr><td class="wrap">Cadence</td><td>hourly, 6 AM&#8211;11 PM IST</td><td>every 30 min, 6 AM&#8211;11 PM IST</td></tr>
+          <tr><td class="wrap">Road-snapped?</td><td>yes — OSRM</td><td>no — cell fixes are &#177;300 m&#8211;2 km, snapping would invent a road</td></tr>
+          <tr><td class="wrap">Line style</td><td>solid</td><td>dotted</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="database" class="mainblock">
+    <h2>Database</h2>
+    <p class="sub">TWO NEW TABLES, ONE MIGRATION FUNCTION</p>
+    <p>
+      <code>sim_location.ensure_sim_tables(con)</code> creates and migrates both tables with
+      <code>CREATE TABLE IF NOT EXISTS</code> and a run of <code>ALTER TABLE ... ADD COLUMN IF
+      NOT EXISTS</code> — the same idempotent pattern the rest of the app already uses for
+      <code>ensure_enroute_trips_table()</code> and friends. It runs once at startup in both
+      backends, so there is no manual migration step to remember.
+    </p>
+
+    <h3>truck_sims — which number is assigned to which truck, and its Telenity state</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>id</td><td class="mono dim">SERIAL PK</td><td class="wrap">&nbsp;</td></tr>
+          <tr><td>vehicle_no</td><td class="mono dim">TEXT</td><td class="wrap">&nbsp;</td></tr>
+          <tr><td>msisdn</td><td class="mono dim">TEXT</td><td class="wrap">digits only, <code>91XXXXXXXXXX</code> — see <code>normalize_msisdn()</code></td></tr>
+          <tr><td>driver_name</td><td class="mono dim">TEXT</td><td class="wrap">split into first/last for Telenity's Import call</td></tr>
+          <tr><td>source</td><td class="mono dim">TEXT default 'manual'</td><td class="wrap">'manual' today; 'zoho' once trip data carries the number</td></tr>
+          <tr><td>is_active</td><td class="mono dim">BOOLEAN default TRUE</td><td class="wrap">reassigning a truck deactivates the old row rather than deleting it — history stays</td></tr>
+          <tr><td>consent_status</td><td class="mono dim">TEXT default 'PENDING'</td><td class="wrap">Telenity's raw consent state, cached from the last check</td></tr>
+          <tr><td>entity_id</td><td class="mono dim">BIGINT</td><td class="wrap">Telenity's id for this driver, returned by Import</td></tr>
+          <tr><td>operator</td><td class="mono dim">TEXT</td><td class="wrap">carrier, when Telenity reports one — decides if resend applies</td></tr>
+          <tr><td>tracking_enabled</td><td class="mono dim">BOOLEAN default FALSE</td><td class="wrap">flips true only after <em>we</em> call Modify</td></tr>
+          <tr><td>consent_checked_at</td><td class="mono dim">TIMESTAMP</td><td class="wrap">&nbsp;</td></tr>
+          <tr><td>consent_expires_on</td><td class="mono dim">TEXT</td><td class="wrap">shown as "Valid till" on the Driver SIMs screen</td></tr>
+          <tr><td>last_consent_sent_at</td><td class="mono dim">TIMESTAMP</td><td class="wrap">drives the resend cooldown</td></tr>
+          <tr><td>last_error</td><td class="mono dim">TEXT</td><td class="wrap">last thing Telenity said, shown on hover</td></tr>
+          <tr><td>assigned_at / removed_at</td><td class="mono dim">TIMESTAMP</td><td class="wrap">&nbsp;</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px;">
+      <code>CREATE UNIQUE INDEX idx_truck_sims_one_active ON truck_sims (vehicle_no) WHERE
+      is_active</code> — a partial unique index, so Postgres itself enforces "one active SIM
+      per truck" without an application-level check, while still letting a truck accumulate a
+      full history of every number it has ever carried.
+    </p>
+
+    <h3>sim_pings — every fix Telenity has actually returned</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>id</td><td class="mono dim">SERIAL PK</td><td class="wrap">&nbsp;</td></tr>
+          <tr><td>vehicle_no / msisdn</td><td class="mono dim">TEXT</td><td class="wrap">&nbsp;</td></tr>
+          <tr><td>lat / lng</td><td class="mono dim">DOUBLE PRECISION</td><td class="wrap">&nbsp;</td></tr>
+          <tr><td>detailed_address</td><td class="mono dim">TEXT</td><td class="wrap">Telenity's reverse-geocoded place name</td></tr>
+          <tr><td>result_status</td><td class="mono dim">INTEGER</td><td class="wrap">Telenity's raw result code — see <code>RESULT_CODES</code></td></tr>
+          <tr><td>speed_kmh / distance_km</td><td class="mono dim">DOUBLE PRECISION</td><td class="wrap">when Telenity supplies them</td></tr>
+          <tr><td>source</td><td class="mono dim">TEXT default 'mock'</td><td class="wrap">'telenity' or 'mock' — filters mock rows out at go-live</td></tr>
+          <tr><td>pinged_at</td><td class="mono dim">TIMESTAMP</td><td class="wrap">IST wall-clock, same convention as <code>crossings.crossed_at</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <p class="h">A row only exists for a fix that actually landed</p>
+      <p><code>poll_sims()</code> only inserts into <code>sim_pings</code> when Telenity's
+      response has <code>retrieved</code> true and both coordinates present. A failed or
+      not-yet-computed check updates <code>truck_sims.last_error</code> and stops there — no
+      placeholder row, no null-coordinate row to filter out downstream. This also means there
+      is no deduplication step: two identical successive positions both get their own row,
+      which is fine for a trail but worth knowing if you ever count pings as a proxy for
+      "checks made."</p>
+    </div>
+    <p style="margin-top:16px;"><code>CREATE INDEX idx_sim_pings_vno_time ON sim_pings (vehicle_no, pinged_at)</code> — every read is "this truck, ordered by time," so that's the only index it needs.</p>
+  </section>
+
+  <section id="drawing" class="mainblock">
+    <h2>The map drawing logic</h2>
+    <p class="sub">SOLID CONFIRMS, DOTTED LEADS</p>
+    <p>
+      Both lines are drawn at a similar weight — 4 or 5 px, not "thick vs. thin." The
+      differentiator that actually matters is the dash pattern and, more importantly,
+      <strong>which one paints on top</strong>. The SIM trail is drawn first; the toll route
+      is drawn second and raised with <code>.bringToFront()</code> — so wherever a crossing
+      later confirms ground the SIM already reported, the solid line physically overwrites
+      the dotted one. That is the whole visual grammar: dotted is a claim, solid is a receipt.
+    </p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 820 200" role="img" aria-label="A shared anchor point at the last confirmed toll crossing. A dotted blue line is drawn first, running from that anchor through two SIM pings out to the truck's current SIM fix. A solid gold line is drawn second and raised to the front, running from the same anchor toward a new toll crossing further along — visibly overlapping and covering part of the dotted segment where the two share ground.">
+        <line class="dg-dot" x1="80" y1="120" x2="740" y2="60"/>
+        <circle class="dg-pt-blue" cx="220" cy="103" r="4"/>
+        <circle class="dg-pt-blue" cx="400" cy="87" r="4"/>
+        <circle class="dg-pt-blue" cx="740" cy="60" r="5"/>
+        <text class="dg-cap" x="742" y="56">current SIM fix</text>
+
+        <path class="dg-solid" d="M80 120 L 420 84"/>
+        <circle class="dg-pt" cx="80" cy="120" r="6"/>
+        <text class="dg-label" x="60" y="146">last confirmed toll</text>
+        <circle class="dg-pt" cx="420" cy="84" r="5"/>
+        <text class="dg-label" x="428" y="80">newest crossing</text>
+        <text class="dg-cap" x="428" y="98">drawn 2nd, bringToFront()</text>
+
+        <text class="dg-cap" x="210" y="176">dotted — drawn 1st, weight 4, dashArray '2,8'</text>
+        <text class="dg-cap" x="480" y="176">solid — drawn 2nd, weight 5, painted on top where they overlap</text>
+        <path class="dg-arrow2" d="M80 120 L420 84" transform="translate(0,20)"/>
+      </svg>
+      <figcaption>The anchor at the last confirmed toll is what makes a single SIM ping visible at all — without it, one point has nothing to draw a line to, which is exactly the bug fixed below.</figcaption>
+    </figure>
+
+    <h3>Implemented in three places, the same way each time</h3>
+    <p>Live Routes and Journey Timeline live in <code>hundred_trucks.html</code>; the public link is <code>track.html</code>. All three build the SIM trail identically:</p>
+    <pre><code>const simPts   = simPings.map(p => [p.lat, p.lng]);
+// anchor at the last confirmed toll so the dotted line bridges from there —
+// a single SIM ping otherwise draws nothing at all
+const trailPts = last ? [[last.lat, last.lng], ...simPts] : simPts;
+if (trailPts.length > 1) {
+  L.polyline(trailPts, { color, weight: 4, opacity: 0.95, dashArray: '2,8', lineCap: 'round' })
+    .addTo(map);
+}
+// ...toll route drawn after, and raised:
+L.polyline(routePts, { color, weight: 5, opacity: 0.95 }).addTo(map).bringToFront();</code></pre>
+
+    <h3>Freshest wins</h3>
+    <p>
+      The truck's "current position" — the marker, the location text, the map's fit-bounds —
+      is whichever signal is newer. Both the Live Routes overview and <code>track.html</code>
+      compare the newest SIM ping's timestamp against the last crossing's and use whichever is
+      later:
+    </p>
+    <pre><code>const simFresher = !!(newestSim && newestSim.lat &&
+                      (!last || simTs(newestSim.pinged_at) > simTs(last.crossed_at)));
+const currentCoord = simFresher ? [newestSim.lat, newestSim.lng]
+                   : last       ? [last.lat, last.lng] : null;</code></pre>
+
+    <h3>The truck marker</h3>
+    <p>
+      The old pulsing diamond became a side-view container truck, MirchiLime yellow tractor
+      fixed on every truck, container coloured per-truck so it still matches its route line and
+      legend chip. It rotates to face its direction of travel, computed from the last two
+      position fixes (<code>bearingDeg()</code>), with two corrections that keep a flat side-view
+      sprite looking right at any heading:
+    </p>
+    <ol class="steps">
+      <li><div class="body"><p><strong>Mirror, don't over-rotate, past due-west.</strong> A plain rotation of a sprite drawn facing right would turn the truck upside-down heading west; instead the SVG is mirrored horizontally (<code>scaleX(-1)</code>) and rotated by the supplementary angle, so the nose still tracks the heading and the wheels stay underneath.</p></div></li>
+      <li><div class="body"><p><strong>Cap the tilt at <code>MAX_TILT = 65</code>&#176;.</strong> An uncapped rotation stands the truck on end at due north or south. 65&#176; stays clear of vertical while still keeping all eight compass directions visually distinct — a 45&#176; cap would make north and north-east render identically.</p></div></li>
+    </ol>
+    <p>Applied identically on <code>hundred_trucks.html</code> (per-truck colour) and <code>track.html</code> (one fixed blue container, since a public link only ever shows one truck).</p>
+  </section>
+
+  <section id="telenity" class="mainblock">
+    <h2>The Telenity integration</h2>
+    <p class="sub">SMARTTRAIL — A PROVISIONING LIFECYCLE, NOT A LOOKUP</p>
+    <p>
+      The first assumption going in — that tracking a driver would be one API call with a
+      phone number in and coordinates out — was wrong, and finding that out shaped most of
+      <code>telenity.py</code>. Telenity's model is a lifecycle: a driver has to opt in over
+      SMS or IVR before any location call returns anything, and <em>we</em>, not Telenity, have
+      to notice that consent landed and flip tracking on ourselves.
+    </p>
+
+    <figure class="diagram">
+      <svg viewBox="0 0 780 190" role="img" aria-label="Five-step lifecycle. One: we call Import, which registers the driver and sends a consent SMS — this costs one of our fifty licences. Two: Telenity sends that SMS. Three, outside our control: the driver replies Y, or calls the IVR line and presses one. A dashed loop on this step shows Resend, available only for Jio numbers and locked out for twenty four hours after each send. Four: once sweep_consents sees the consent is allowed, we call Modify with isTracked true — Telenity never does this step for us. Five: the Location or Bulk Location API starts returning real fixes, polled every thirty minutes.">
+        <rect class="dg-box" x="2"   y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-box" x="164" y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-gate" x="326" y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-box" x="488" y="44" width="132" height="52" rx="9"/>
+        <rect class="dg-box" x="650" y="44" width="128" height="52" rx="9"/>
+
+        <circle class="dg-num" cx="18"  cy="44" r="10"/><text class="dg-numtx" x="15"  y="48">1</text>
+        <circle class="dg-num" cx="180" cy="44" r="10"/><text class="dg-numtx" x="177" y="48">2</text>
+        <circle class="dg-num" cx="342" cy="44" r="10"/><text class="dg-numtx" x="339" y="48">3</text>
+        <circle class="dg-num" cx="504" cy="44" r="10"/><text class="dg-numtx" x="501" y="48">4</text>
+        <circle class="dg-num" cx="666" cy="44" r="10"/><text class="dg-numtx" x="663" y="48">5</text>
+
+        <text class="dg-label" x="36"  y="72">Import driver</text>
+        <text class="dg-label" x="198" y="72">Consent SMS</text>
+        <text class="dg-label" x="360" y="72">Driver replies</text>
+        <text class="dg-label" x="522" y="72">Enable tracking</text>
+        <text class="dg-label" x="684" y="72">Positions</text>
+
+        <text class="dg-cap" x="36"  y="88">import_entity() &#183; uses 1 licence</text>
+        <text class="dg-cap" x="198" y="88">sent by Telenity</text>
+        <text class="dg-cap" x="360" y="88">&#8220;Y&#8221;, or IVR press 1</text>
+        <text class="dg-cap" x="522" y="88">set_tracking(id, tracked=True)</text>
+        <text class="dg-cap" x="684" y="88">bulk_locations() every 30 min</text>
+
+        <path class="dg-arrow" d="M134 70 L158 70"/><path class="dg-arrow" d="M152 65 L160 70 L152 75"/>
+        <path class="dg-arrow" d="M296 70 L320 70"/><path class="dg-arrow" d="M314 65 L322 70 L314 75"/>
+        <path class="dg-arrow" d="M458 70 L482 70"/><path class="dg-arrow" d="M476 65 L484 70 L476 75"/>
+        <path class="dg-arrow" d="M620 70 L644 70"/><path class="dg-arrow" d="M638 65 L646 70 L638 75"/>
+
+        <path class="dg-gate" d="M392 100 L392 118"/>
+        <path class="dg-arrow2" d="M356 116 C 330 140, 330 158, 360 158 L 400 158 C 420 158, 420 140, 400 118"/>
+        <text class="dg-note" x="230" y="176">resend — Jio only, 24h cooldown, no reply required to retry</text>
+      </svg>
+      <figcaption>Step 4 is the one Telenity's own documentation implies happens automatically. It doesn't — <code>sweep_consents()</code> polls consent status on a schedule and calls Modify itself the moment it sees <code>ALLOWED</code>.</figcaption>
+    </figure>
+
+    <h3>Two hosts, two credentials, two token lifetimes</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>&nbsp;</th><th>Entities &amp; location</th><th>Consent</th></tr></thead>
+        <tbody>
+          <tr><td class="wrap">Host</td><td><code>smarttrail.telenity.com</code></td><td><code>india-agw.telenity.com</code></td></tr>
+          <tr><td class="wrap">Credential</td><td><code>TELENITY_TRAIL_BASIC</code></td><td><code>TELENITY_AGW_BASIC</code></td></tr>
+          <tr><td class="wrap">Token</td><td>session token, cached</td><td>OAuth bearer, cached</td></tr>
+          <tr><td class="wrap">Lifetime</td><td>&#126;6 hours</td><td>&#126;1 hour</td></tr>
+          <tr><td class="wrap">Client fn</td><td><code>telenity.login()</code></td><td><code>telenity.agw_token()</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px;">Both are simple retry-on-401 wrappers (<code>_trail_call()</code>, <code>_agw_call()</code>) — a stale cached token gets one silent retry with a fresh one before the error surfaces.</p>
+
+    <h3>The driver SIM screen — what each state means</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>State</th><th>Label</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>tracking</td><td>Tracking</td><td class="wrap">Consent allowed, tracking on, Location calls return fixes</td></tr>
+          <tr><td>enabling</td><td>Consented — enabling tracking</td><td class="wrap">Consent landed, waiting for <code>sweep_consents()</code> to call Modify</td></tr>
+          <tr><td>awaiting</td><td>Awaiting driver consent</td><td class="wrap">SMS sent, driver hasn't replied yet — the only state Resend applies to</td></tr>
+          <tr><td>expired</td><td>Consent expired</td><td class="wrap">Was allowed, has lapsed</td></tr>
+          <tr><td>hold</td><td>Licence on hold</td><td class="wrap">Telenity-side account issue, not driver-side</td></tr>
+          <tr><td>problem</td><td>Needs attention</td><td class="wrap">Anything else — the catch-all, surfaced with <code>last_error</code> on hover</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:14px;">Resend is Jio-specific — Airtel, Vi and BSNL have no re-initiate endpoint at all, so their drivers only have the IVR line. Telenity lock a number at the operator level for 24 hours if the consent SMS is resent too often, so <code>can_resend()</code> refuses inside <code>SIM_RESEND_COOLDOWN_HOURS</code>, and the Driver SIMs screen's bulk "Resend all selected" quietly skips any row still in cooldown rather than firing at it.</p>
+
+    <h3>Mock mode</h3>
+    <p>
+      <code>MOCK_MODE = bool(SIM_MOCK) or not telenity.CONFIGURED</code> — with the two
+      <code>TELENITY_*_BASIC</code> variables unset, the whole feature still runs. Positions
+      are generated by projecting forward from a truck's last two real toll crossings at
+      &#126;38 km/h along their heading, seeded per hour so a trail builds smoothly across
+      repeated calls, and the consent sweep approves instantly. Every mock row is tagged
+      <code>sim_pings.source = 'mock'</code>, so going live is <code>DELETE FROM sim_pings
+      WHERE source='mock'</code> — no schema change, no data to reconcile by hand.
+    </p>
+
+    <h3>Licences</h3>
+    <p>The pilot has 50 Telenity licences, one consumed per driver from Import until removed — release can take up to 24 hours to actually free the licence back up. <code>telenity.licence()</code> backs the count shown on the Driver SIMs screen and gates <code>telenity_smoke.py</code>'s walkthrough from starting with zero left.</p>
+  </section>
+
+  <section id="files" class="mainblock">
+    <h2>File by file</h2>
+    <p class="sub">WHAT EACH FILE IS RESPONSIBLE FOR</p>
+
+    <div class="ftree">
+<pre>hundred-trucks-analysis/
+├── <span class="new">telenity.py</span>            <span class="dim">new · 302 lines · Telenity API client</span>
+├── <span class="new">sim_location.py</span>        <span class="dim">new · 458 lines · domain logic over telenity.py</span>
+├── <span class="new">telenity_smoke.py</span>      <span class="dim">new · 146 lines · guided single-driver test walkthrough</span>
+├── <span class="chg">wsgi.py</span>                <span class="dim">+118 · production Flask app, Render</span>
+├── <span class="chg">server.py</span>              <span class="dim">+270 · local dev mirror, stdlib http.server</span>
+├── <span class="chg">hundred_trucks.html</span>    <span class="dim">+557 · Driver SIMs screen, marker, dual-line draw</span>
+├── <span class="chg">track.html</span>             <span class="dim">+184 · public link, same marker + dual-line draw</span>
+├── <span class="chg">test_backend.py</span>        <span class="dim">+83 · section 9, SIM endpoints</span>
+├── <span class="new">truck-icon.svg</span>         <span class="dim">new · reference copy of the marker artwork</span>
+└── docs/                    <span class="dim">Telenity dev guide, Postman collection, screenshot</span></pre>
+    </div>
+
+    <div class="module">
+      <div class="module-hd"><span class="module-fn">telenity.py</span><span class="module-tag new">new</span><span class="module-loc">302 lines</span></div>
+      <div class="module-bd">
+        <p>The only file that talks to Telenity's HTTP API. Nothing above it knows or cares
+        about hosts, auth headers, or Telenity's response shapes.</p>
+        <div class="module-fns">
+          <p><span class="fn">login()</span> / <span class="fn">agw_token()</span> — cache and refresh the two independent tokens, retry once on a stale cache.</p>
+          <p><span class="fn">import_entity()</span> — registers a driver; this is what sends the consent SMS and spends a licence.</p>
+          <p><span class="fn">set_tracking()</span> — the Modify call; a 403 means "consent isn't allowed yet," handled as a normal outcome, not an error.</p>
+          <p><span class="fn">consent_status()</span> / <span class="fn">consent_allowed()</span> — normalizes <code>ALLOWED</code> / <code>CONSENT_APPROVED</code> / <code>ACTIVE</code> to one boolean.</p>
+          <p><span class="fn">jio_reinitiate()</span> — resend, Jio only.</p>
+          <p><span class="fn">location()</span> / <span class="fn">bulk_locations()</span> — single and up-to-200-at-once fixes; <span class="fn">_parse_terminal()</span> is the shared result-code interpreter both funnel through.</p>
+          <p><span class="fn">TelenityError</span> — carries the HTTP status and a slice of the response body in its message, so a bare <code>str(e)</code> at the call site still shows the real diagnostic.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-hd"><span class="module-fn">sim_location.py</span><span class="module-tag new">new</span><span class="module-loc">458 lines</span></div>
+      <div class="module-bd">
+        <p>Everything that is <em>our</em> logic rather than Telenity's API shape: schema,
+        state derivation, mock fallback, and the four actions the UI can trigger.</p>
+        <div class="module-fns">
+          <p><span class="fn">ensure_sim_tables()</span> — schema + migrations, idempotent.</p>
+          <p><span class="fn">sim_state()</span> / <span class="fn">STATE_LABELS</span> — turns <code>consent_status</code> + <code>tracking_enabled</code> into one of six UI states.</p>
+          <p><span class="fn">can_resend()</span> — the 24-hour, awaiting-only, Jio-only resend gate.</p>
+          <p><span class="fn">assign_sim()</span> — checks the licence, calls Import with the lastName fallback, writes the row.</p>
+          <p><span class="fn">release_sim()</span> / <span class="fn">resend_consent()</span> — the other two driver-facing actions.</p>
+          <p><span class="fn">sweep_consents()</span> — the step Telenity don't do for you: polls consent, calls Modify the moment it's allowed.</p>
+          <p><span class="fn">poll_sims()</span> — the 30-minute job; bulk-fetches, inserts a ping only on a real retrieved fix.</p>
+          <p><span class="fn">list_sims()</span> / <span class="fn">get_sim()</span> / <span class="fn">get_sim_pings()</span> / <span class="fn">latest_pings()</span> — read helpers the UI and API layer call directly.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-hd"><span class="module-fn">wsgi.py</span><span class="module-tag">extended</span><span class="module-loc">+118 lines</span></div>
+      <div class="module-bd">
+        <p>Production Flask app on Render. Imports both new modules; adds <code>sim</code> and
+        <code>sim_pings</code> to <code>/api/hundred-truck-detail</code> and <code>/api/track</code>,
+        and <code>has_sim</code> to <code>/api/hundred-trucks</code>. Seven new
+        <code>@application.route</code> endpoints (listed below). <code>ping_sims()</code> —
+        <code>sweep_consents()</code> then <code>poll_sims()</code> — is scheduled into the
+        existing <code>fcntl</code>-locked APScheduler block alongside the FASTag and credit-trip
+        jobs, so exactly one Gunicorn worker registers it.</p>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-hd"><span class="module-fn">server.py</span><span class="module-tag">extended</span><span class="module-loc">+270 lines</span></div>
+      <div class="module-bd">
+        <p>The local dev mirror, stdlib <code>http.server</code> with a pooled
+        <code>get_db()</code>/<code>release_db()</code> and a TTL cache. Gains the same seven
+        SIM routes as <code>wsgi.py</code>, plus <code>cache_drop()</code> to invalidate a
+        truck's cached detail immediately after a SIM write. It also picks up two capabilities
+        it never had at all, because it has no scheduler: <code>sync_enroute_trips()</code>
+        (ported from <code>wsgi.py</code> — previously <code>server.py</code> could only read
+        the <code>enroute_trips</code> table, never populate it) and an on-demand FASTag
+        fetch (<code>fetch_zoho()</code>, <code>save_crossings()</code>) exposed as
+        <code>/api/ping-truck</code> and <code>/api/ping-all-connected</code>.</p>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-hd"><span class="module-fn">hundred_trucks.html</span><span class="module-tag">extended</span><span class="module-loc">+557 lines</span></div>
+      <div class="module-bd">
+        <p>Three additions: the <strong>Driver SIMs</strong> screen (table of every assignment
+        with status, valid-till, per-row Resend/Delete/Fetch-position, bulk actions, a
+        pending-only toggle); the <strong>container-truck marker</strong>
+        (<span class="fn">truckMarkerHtml()</span>, <span class="fn">headingTransform()</span>,
+        <span class="fn">bearingDeg()</span>); and the <strong>dual-line drawing</strong> in
+        both the Live Routes view and the Journey Timeline tab, including the
+        last-toll-crossing anchor fix and the freshest-wins current-position logic. Also fixes
+        a pre-existing bug while in the area: <code>lrDrawGen</code> guards against a stale
+        async OSRM route result painting over a newer redraw.</p>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-hd"><span class="module-fn">track.html</span><span class="module-tag">extended</span><span class="module-loc">+184 lines</span></div>
+      <div class="module-bd">
+        <p>The public, token-based tracking page. Same marker and dual-line treatment as the
+        dashboard, with one fixed colour since a single link only ever shows one truck. The
+        driver's real <code>msisdn</code> is now wired into the Call and WhatsApp buttons
+        (replacing a hardcoded placeholder number), gated by <code>PUBLIC_DRIVER_PHONE</code>.</p>
+      </div>
+    </div>
+
+    <div class="module">
+      <div class="module-hd"><span class="module-fn">telenity_smoke.py</span><span class="module-tag new">new</span><span class="module-loc">146 lines</span></div>
+      <div class="module-bd">
+        <p>An interactive CLI that walks one real driver through the entire lifecycle,
+        colour-coded terminal output, one step at a time. Requires typing "yes" before Import
+        since that step sends a real SMS and spends a licence; polls consent every 15 s; enables
+        tracking; polls location every 30 s for up to 5 minutes; prints a Google Maps link so
+        accuracy can be eyeballed against where the driver actually is standing.
+        <code>--status</code> checks read-only, <code>--remove</code> releases the licence.
+        Touches Telenity only — never the database — so nothing it does can disturb the
+        dashboard.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="api" class="mainblock">
+    <h2>API endpoints</h2>
+    <p class="sub">ALL GET, QUERY-STRING PARAMETERS, NO AUTH — MATCHING THE REST OF THE APP</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Endpoint</th><th>Where</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td>/api/set-sim</td><td>both</td><td class="wrap">Assign a driver SIM to a truck; calls Import, pings once immediately</td></tr>
+          <tr><td>/api/remove-sim</td><td>both</td><td class="wrap">Stop tracking, delete the Telenity entity, deactivate the local row</td></tr>
+          <tr><td>/api/resend-consent</td><td>both</td><td class="wrap">Resend the consent SMS — refused inside cooldown</td></tr>
+          <tr><td>/api/sweep-consents</td><td>both</td><td class="wrap">Check consent now; enable tracking on anything newly allowed</td></tr>
+          <tr><td>/api/ping-sims</td><td>both</td><td class="wrap">Run the location poller now, all SIMs or one truck</td></tr>
+          <tr><td>/api/sim-list</td><td>both</td><td class="wrap">Everything the Driver SIMs screen shows, plus licence count</td></tr>
+          <tr><td>/api/sim-latest</td><td>both</td><td class="wrap">Newest SIM fix per truck, for fleet-overview badges</td></tr>
+          <tr><td>/api/hundred-trucks</td><td>both</td><td class="wrap">existing — extended with <code>has_sim</code></td></tr>
+          <tr><td>/api/hundred-truck-detail</td><td>both</td><td class="wrap">existing — extended with <code>sim</code>, <code>sim_pings</code></td></tr>
+          <tr><td>/api/track</td><td>both</td><td class="wrap">existing — extended with <code>sim</code>, <code>sim_pings</code>, driver <code>msisdn</code></td></tr>
+          <tr><td>/api/sync-enroute</td><td>local only</td><td class="wrap">On-demand Zoho enroute-trip sync — production already had this on a cron</td></tr>
+          <tr><td>/api/ping-truck</td><td>local only</td><td class="wrap">On-demand FASTag fetch for one truck</td></tr>
+          <tr><td>/api/ping-all-connected</td><td>local only</td><td class="wrap">On-demand FASTag fetch for every connected truck</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="config" class="mainblock">
+    <h2>Configuration</h2>
+    <p class="sub">ENVIRONMENT VARIABLES</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Variable</th><th>Default</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>TELENITY_TRAIL_BASIC</td><td class="dim">&#8212;</td><td class="wrap">Basic auth key for entities/location — <strong>required for real tracking</strong></td></tr>
+          <tr><td>TELENITY_AGW_BASIC</td><td class="dim">&#8212;</td><td class="wrap">Basic auth key for the consent token — <strong>required for real tracking</strong></td></tr>
+          <tr><td>TELENITY_TRAIL_HOST</td><td class="mono dim">smarttrail.telenity.com</td><td class="wrap">override only if Telenity change hosts</td></tr>
+          <tr><td>TELENITY_AGW_HOST</td><td class="mono dim">india-agw.telenity.com</td><td class="wrap">override only if Telenity change hosts</td></tr>
+          <tr><td>TELENITY_TIMEOUT</td><td class="mono dim">25</td><td class="wrap">seconds, per HTTP call</td></tr>
+          <tr><td>SIM_MOCK</td><td class="mono dim">unset</td><td class="wrap">set to force mock mode even with real credentials present</td></tr>
+          <tr><td>SIM_PING_HOURS</td><td class="mono dim">6-23</td><td class="wrap">cron hour range for the location poller</td></tr>
+          <tr><td>SIM_PING_MINUTES</td><td class="mono dim">0,30</td><td class="wrap">cron minutes within those hours</td></tr>
+          <tr><td>SIM_RESEND_COOLDOWN_HOURS</td><td class="mono dim">24</td><td class="wrap">matches Telenity's own Jio resend lockout</td></tr>
+          <tr><td>PUBLIC_DRIVER_PHONE</td><td class="mono dim">1</td><td class="wrap">set to 0 to hide the driver's number on public track links</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note">
+      <p class="h">In production, only two of these are required</p>
+      <p>Setting <code>TELENITY_TRAIL_BASIC</code> and <code>TELENITY_AGW_BASIC</code> is what
+      switches the app from mock to live — every other variable already has a sane default, and
+      setting them anyway causes no harm.</p>
+    </div>
+  </section>
+
+  <section id="ops" class="mainblock">
+    <h2>Running in production</h2>
+    <p class="sub">HOW THE SCHEDULER ACTUALLY WORKS, AND WHERE IT DOESN'T EXIST AT ALL</p>
+    <p>
+      <code>wsgi.py</code> runs an in-process APScheduler <code>BackgroundScheduler</code>
+      inside Gunicorn — no external cron. Because Gunicorn can run multiple workers, the
+      scheduler setup is guarded by an <code>fcntl.flock</code> on
+      <code>/tmp/hundred_scheduler.lock</code>, so only the first worker to grab the lock
+      registers jobs; every other worker hits <code>BlockingIOError</code> and skips
+      registration silently. <code>ping_sims</code> joins the existing FASTag and credit-trip
+      jobs in that same locked block.
+    </p>
+    <div class="note bug">
+      <p class="h">This startup block only catches one exception type</p>
+      <p>The scheduler setup runs at <strong>module import time</strong>, outside any
+      <code>if __name__ == '__main__':</code> guard — and the surrounding
+      <code>try/except</code> only catches <code>BlockingIOError</code>. Any other exception
+      raised while registering jobs (for instance, a malformed cron string from
+      <code>SIM_PING_HOURS</code> or <code>SIM_PING_MINUTES</code>) would crash the entire
+      application at import, not just fail to schedule the SIM job. This is an existing
+      characteristic of the file, not something introduced here — but the two new SIM env
+      vars now feed directly into that same unguarded path, so a typo in either is worth
+      double-checking before deploying.</p>
+    </div>
+    <p>
+      <code>server.py</code>, the local dev mirror, has no scheduler at all — nothing runs on a
+      timer locally. That is exactly why it gained manual trigger endpoints
+      (<code>/api/ping-sims</code>, <code>/api/sweep-consents</code>,
+      <code>/api/sync-enroute</code>, <code>/api/ping-truck</code>,
+      <code>/api/ping-all-connected</code>) that production reaches only through cron: every
+      "scheduled" production behaviour needs a manual equivalent to be testable locally at all.
+    </p>
+  </section>
+
+  <section id="testing" class="mainblock">
+    <h2>Testing</h2>
+    <p class="sub">AUTOMATED CHECKS, AND A SAFE WAY TO TEST AGAINST THE REAL API</p>
+    <h3>test_backend.py — section 9</h3>
+    <p>Self-cleaning, against the existing test truck. Assign a SIM, confirm <code>has_sim</code>
+    flips true on the fleet list, ping once and confirm a fix lands in truck-detail and on the
+    public track token, then remove it and confirm <code>has_sim</code> flips back.</p>
+
+    <h3>telenity_smoke.py — one real driver, deliberately slow</h3>
+    <p>
+      Testing against Telenity directly has real costs — an SMS sent, a licence spent — so this
+      script never does anything state-changing without a typed confirmation, always checks
+      read-only state (licence count, consent status, entity search) before acting, and never
+      retries blindly. That discipline came directly out of diagnosing the lastName bug: the
+      read-only checks are what ruled out the wrong hypothesis before the real one-line cause
+      was found.
+    </p>
+    <pre><code>python3 telenity_smoke.py 919876543210 "Ramesh Kumar"   # full walkthrough
+python3 telenity_smoke.py 919876543210 --status          # read-only check
+python3 telenity_smoke.py 919876543210 --remove          # release the licence</code></pre>
+  </section>
+
+  <section id="gaps" class="mainblock">
+    <h2>Open items</h2>
+    <p class="sub">FLAGGED, NOT BLOCKING</p>
+    <div class="ledger">
+      <div class="row"><div class="k">Jio resend, live</div><p class="v">The resend flow is implemented and cooldown-gated but has not yet been fired against a real Jio number end-to-end — only Airtel/Vi numbers have been tested live so far.</p></div>
+      <div class="row"><div class="k">DoT/TRAI consent</div><p class="v">India's telecom rules require subscriber consent before a location lookup. <code>truck_sims.consent_status</code> exists and Telenity's own SMS gate enforces opt-in at their end, but nothing on our side independently enforces or audits it.</p></div>
+      <div class="row"><div class="k">Accuracy, unverified</div><p class="v">Telenity's fixes are network-based, not GPS. <code>telenity_smoke.py</code> prints a Maps link for a manual eyeball check, but no formal accuracy number has been established yet.</p></div>
+      <div class="row"><div class="k">SIM_MANUAL_ENTRY</div><p class="v">Numbers are entered by hand in the dashboard today. The flag exists specifically so this can flip to Zoho-sourced numbers (<code>source='zoho'</code> rows) later with a one-line change.</p></div>
+      <div class="row"><div class="k">Static file exposure</div><p class="v">Flask's <code>static_folder</code> serves files without going through <code>DASHBOARD_KEY</code> — a pre-existing gap, unrelated to this feature, flagged previously and still open.</p></div>
+    </div>
+  </section>
+
+  <footer>MirchiLime Connect &#183; branch <code>simtracking</code> &#183; written 2026-08-30</footer>
+
+</div>
+</main>
+
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.sb-link'));
+  var sections = links.map(function (l) { return document.querySelector(l.getAttribute('href')); }).filter(Boolean);
+  if ('IntersectionObserver' in window && sections.length) {
+    var byId = {};
+    links.forEach(function (l) { byId[l.getAttribute('href').slice(1)] = l; });
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var link = byId[entry.target.id];
+        if (!link) return;
+        if (entry.isIntersecting) {
+          links.forEach(function (l) { l.classList.remove('active'); });
+          link.classList.add('active');
+        }
+      });
+    }, { rootMargin: '-10% 0px -70% 0px', threshold: 0 });
+    sections.forEach(function (s) { observer.observe(s); });
+  }
+
+  var toggle = document.getElementById('themeToggle');
+  var root = document.documentElement;
+  try {
+    var saved = localStorage.getItem('ml-doc-theme');
+    if (saved) root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  toggle.addEventListener('click', function () {
+    var current = root.getAttribute('data-theme');
+    var next = current === 'dark' ? 'light' : (current === 'light' ? null : (matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark'));
+    if (next) root.setAttribute('data-theme', next); else root.removeAttribute('data-theme');
+    try { next ? localStorage.setItem('ml-doc-theme', next) : localStorage.removeItem('ml-doc-theme'); } catch (e) {}
+  });
+})();
+</script>
+
+</body>
+</html>
