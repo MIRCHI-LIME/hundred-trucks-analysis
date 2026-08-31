@@ -234,7 +234,7 @@
     <div class="ml-brand-name">MIRCHILIME <b>Connect</b></div>
   </div>
   <div class="ml-stat-group">
-    <div class="ml-stat"><div class="ml-stat-val" id="stat-trucks">100</div><div class="ml-stat-lbl">Trucks</div></div>
+    <div class="ml-stat"><div class="ml-stat-val" id="stat-trucks">—</div><div class="ml-stat-lbl">Trucks</div></div>
     <div class="ml-stat"><div class="ml-stat-val" id="stat-plazas">—</div><div class="ml-stat-lbl">Plazas</div></div>
   </div>
   <div class="ml-tabs">
@@ -481,7 +481,7 @@
             <div style="font-size:10px;color:var(--ml-muted);margin-top:2px;">Total Plazas</div>
           </div>
           <div style="background:var(--ml-amber-chip-bg);border-radius:var(--ml-radius-card);padding:10px;text-align:center;">
-            <div style="font-family:var(--ml-font-display);font-size:18px;font-weight:800;color:var(--ml-amber-text);" id="rpt-total-trucks">100</div>
+            <div style="font-family:var(--ml-font-display);font-size:18px;font-weight:800;color:var(--ml-amber-text);" id="rpt-total-trucks">—</div>
             <div style="font-size:10px;color:var(--ml-muted);margin-top:2px;">Trucks</div>
           </div>
         </div>
@@ -665,11 +665,15 @@ async function loadTrucks() {
       pickup:   t.pickup   || '—',
       drop:     t.drop_city || t.drop || '—',
     }));
-    connectedTruckNos = new Set(allTrucks.filter(t => t.is_connected === 1 || t.is_connected === true).map(t => t.vehicle_no));
+    connectedTruckNos = new Set(allTrucks.filter(t => (t.is_connected === 1 || t.is_connected === true) && !t.is_manual).map(t => t.vehicle_no));
     creditTruckNos    = new Set(allCreditTrucks.map(t => t.truck_no));
     _trucksReadyResolve();
-    document.getElementById('stat-trucks').textContent = connectedTruckNos.size + creditTruckNos.size;
-    document.getElementById('stat-plazas').textContent = trucksData.total_plazas || '—';
+    const activeTruckCount = connectedTruckNos.size + creditTruckNos.size;
+    const totalPlazas = allTrucks
+      .filter(t => connectedTruckNos.has(t.vehicle_no) || creditTruckNos.has(t.vehicle_no))
+      .reduce((sum, t) => sum + (t.unique_plazas || 0), 0);
+    document.getElementById('stat-trucks').textContent = activeTruckCount;
+    document.getElementById('stat-plazas').textContent = totalPlazas || '—';
     const rptTrucks = document.getElementById('rpt-total-trucks');
     if (rptTrucks) rptTrucks.textContent = connectedTruckNos.size + creditTruckNos.size;
     // keep Live Routes "Last Ping" display in sync with latest fetched_at
@@ -2247,7 +2251,7 @@ async function loadLiveRoutes() {
     const simData = simRes ? await simRes.json() : null;
     for (const p of (simData?.trucks || [])) latestSimByTruck[p.vehicle_no] = p;
   } catch(e) {}
-  const connected = (data.trucks || []).filter(t => t.is_connected === 1 || t.is_connected === true);
+  const connected = (data.trucks || []).filter(t => (t.is_connected === 1 || t.is_connected === true) && !t.is_manual);
   const lastPositions = posData.positions || {};
   // use last position as single-crossing array until full batch arrives
   // store last position + real count; crossings array has 1 entry for map display
