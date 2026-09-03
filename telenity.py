@@ -154,7 +154,8 @@ def import_entity(msisdn, first_name='Driver', last_name='.'):
     """
     Register a driver. This is what sends the consent SMS.
     Returns {'entity_id', 'is_tracked'} — is_tracked is true only if consent
-    already existed, e.g. the driver consented by IVR before being imported.
+    already existed, e.g. the driver consented by IVR before being imported,
+    or the number was already registered from an earlier import.
     """
     status, body = _trail_call('/trail-rest/entities/import', 'POST',
         {'entityImportList': [{'firstName': first_name, 'lastName': last_name,
@@ -162,6 +163,12 @@ def import_entity(msisdn, first_name='Driver', last_name='.'):
     ok = (body.get('successList') or [None])[0] if status == 200 else None
     if not ok:
         fail = (body.get('failureList') or [{}])[0] if isinstance(body, dict) else {}
+        # Telenity refuse to re-import a number that is already an entity on their
+        # side (e.g. left over from earlier testing) — but the failure item still
+        # carries the existing entityId and its current tracked state, so this is
+        # recoverable rather than a real failure.
+        if fail.get('entityId') and 'already exists' in str(fail.get('errorDesc', '')).lower():
+            return {'entity_id': fail['entityId'], 'is_tracked': bool(fail.get('isTracked'))}
         msg = body.get('errorMessage') or fail.get('errorMessage') or 'import failed'
         raise TelenityError(msg, status, body)
     return {'entity_id': ok.get('entityId'), 'is_tracked': bool(ok.get('isTracked'))}
