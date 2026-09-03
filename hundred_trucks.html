@@ -387,6 +387,9 @@
     <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--ml-text);cursor:pointer;">
       <input type="checkbox" id="sim-only-pending" onchange="renderSimList()"> Show only pending
     </label>
+    <label style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--ml-text);cursor:pointer;">
+      <input type="checkbox" id="sim-only-disconnected" onchange="renderSimList()"> Show only disconnected
+    </label>
     <button onclick="sweepConsents()" style="background:var(--ml-olive-tint);color:var(--ml-olive-text);border:none;border-radius:9px;padding:7px 13px;font-size:12px;font-weight:700;cursor:pointer;">Check consents now</button>
   </div>
   <div id="sim-table-wrap" style="padding:8px 24px 24px;">
@@ -1360,12 +1363,16 @@ async function loadSimList() {
 }
 
 function renderSimList() {
-  const onlyPending = document.getElementById('sim-only-pending').checked;
-  const rows = onlyPending ? simRows.filter(r => r.state === 'awaiting' || r.state === 'enabling') : simRows;
+  const onlyPending      = document.getElementById('sim-only-pending').checked;
+  const onlyDisconnected = document.getElementById('sim-only-disconnected').checked;
+  let rows = simRows;
+  if (onlyPending)      rows = rows.filter(r => r.state === 'awaiting' || r.state === 'enabling');
+  if (onlyDisconnected) rows = rows.filter(r => !r.is_connected);
   const wrap = document.getElementById('sim-table-wrap');
 
   if (!rows.length) {
     wrap.innerHTML = `<div style="color:var(--ml-muted-2);font-size:13px;padding:24px 0;">${
+      onlyDisconnected ? 'No SIMs are tied to a disconnected truck — nothing wasting a licence.' :
       onlyPending ? 'No drivers are waiting to consent.' : 'No driver SIMs yet — add one from a truck\'s detail panel.'}</div>`;
     updateSimSelection();
     return;
@@ -1387,7 +1394,8 @@ function renderSimList() {
         return `<tr style="border-top:1px solid var(--ml-hairline-3);">
           <td style="padding:11px 8px 11px 0;"><input type="checkbox" class="sim-pick" data-vno="${r.vehicle_no}" onchange="updateSimSelection()"></td>
           <td style="padding:11px 14px 11px 0;font-weight:800;color:var(--ml-ink);">${r.vehicle_no}
-            ${r.driver_name ? `<div style="font-weight:500;font-size:11px;color:var(--ml-muted-2);">${r.driver_name}</div>` : ''}</td>
+            ${r.driver_name ? `<div style="font-weight:500;font-size:11px;color:var(--ml-muted-2);">${r.driver_name}</div>` : ''}
+            ${!r.is_connected ? `<div style="font-weight:700;font-size:11px;color:var(--ml-terra-text);">Truck disconnected — licence in use</div>` : ''}</td>
           <td style="padding:11px 14px 11px 0;font-family:var(--ml-font-mono);font-size:12px;">+${r.msisdn}</td>
           <td style="padding:11px 14px 11px 0;color:${SIM_STATE_COLOR[r.state]};font-weight:700;">
             <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${SIM_STATE_DOT[r.state]};margin-right:7px;"></span>${r.state_label}

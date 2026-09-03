@@ -420,7 +420,7 @@ def list_sims(con):
     cur = con.cursor()
     cur.execute('''SELECT s.vehicle_no, s.msisdn, s.driver_name, s.consent_status,
                           s.tracking_enabled, s.consent_expires_on, s.last_error,
-                          s.last_consent_sent_at, s.assigned_at, t.owner
+                          s.last_consent_sent_at, s.assigned_at, t.owner, t.is_connected
                    FROM truck_sims s
                    LEFT JOIN trucks t ON t.vehicle_no = s.vehicle_no
                    WHERE s.is_active ORDER BY s.vehicle_no''')
@@ -430,7 +430,10 @@ def list_sims(con):
                'consent_status': r[3], 'tracking_enabled': r[4],
                'valid_till': r[5], 'last_error': r[6],
                'last_consent_sent_at': r[7], 'assigned_at': str(r[8])[:16] if r[8] else None,
-               'owner': r[9]}
+               'owner': r[9],
+               # a truck can vanish from Live entirely (deleted/never in `trucks`),
+               # not just be marked disconnected — treat both as "not connected"
+               'is_connected': r[10] in (1, True)}
         row['state'] = sim_state(row)
         row['state_label'] = STATE_LABELS[row['state']]
         allowed, reason = can_resend(row)
