@@ -330,6 +330,22 @@ def hundred_plaza_detail():
 def keep_alive():
     return jsonify({'status': 'ok', 'time': datetime.datetime.utcnow().isoformat()})
 
+@application.route('/api/zoho-status')
+def zoho_status():
+    """Driven by the same _retry_attempts the auto-retry system uses — see ping_enroute."""
+    if not _retry_attempts:
+        return jsonify({'status': 'up'})
+    now = datetime.datetime.now()
+    soonest = min(s['next_retry_at'] for s in _retry_attempts.values())
+    mins_left = max(0, round((soonest - now).total_seconds() / 60))
+    last_error = next(iter(_retry_attempts.values()))['error']
+    return jsonify({
+        'status': 'down',
+        'failing_trucks': list(_retry_attempts.keys()),
+        'next_retry_in_min': mins_left,
+        'last_error': last_error,
+    })
+
 @application.route('/api/make-token')
 def api_make_token():
     vno = request.args.get('vehicle_no', '').strip().upper()
@@ -1091,23 +1107,64 @@ def check_trip_completion():
     except Exception as e:
         print(f'[check_trip_completion] ERROR: {e}', flush=True)
 
+# ── Auto-retry for Zoho hiccups ─────────────────────────────────────────────
+# On 6 Sep, Zoho briefly returned malformed responses and every FASTag fetch
+# crashed with "'str' object has no attribute 'get'" — silently, for ~24h,
+# until someone noticed the data had gone stale. Rather than waiting for the
+# next hourly cron, a truck that fails now gets retried sooner: 15 min, then
+# 30, then 60 — before falling back to the normal hourly schedule. Retries
+# are per-truck (a real Zoho outage fails every truck, so they all end up
+# retried anyway; a single truck's own hiccup no longer has to wait an hour).
+RETRY_DELAYS_MIN = [15, 30, 60]
+_retry_attempts = {}   # vehicle_no -> {'attempt', 'error', 'next_retry_at'} — also drives /api/zoho-status
+
+def _ping_one_truck(vno, label):
+    """Fetch + save one truck's crossings, scheduling a retry on failure."""
+    try:
+        records = fetch_zoho(vno)
+        new_rows = save_crossings(vno, records)
+        print(f'  ✓ {vno} — {len(records)} crossings ({new_rows} new)', flush=True)
+        _retry_attempts.pop(vno, None)
+    except Exception as e:
+        print(f'  ✗ {vno} — ERROR: {e}', flush=True)
+        _schedule_retry(vno, label, str(e))
+
+def _schedule_retry(vno, label, error=''):
+    attempt = _retry_attempts.get(vno, {}).get('attempt', 0)
+    if attempt >= len(RETRY_DELAYS_MIN):
+        print(f'  {vno}: giving up after {attempt} retries — will resume at the next scheduled {label} ping', flush=True)
+        _retry_attempts.pop(vno, None)
+        return
+    delay = RETRY_DELAYS_MIN[attempt]
+    run_at = datetime.datetime.now() + datetime.timedelta(minutes=delay)
+    _retry_attempts[vno] = {'attempt': attempt + 1, 'error': error, 'next_retry_at': run_at}
+    print(f'  {vno}: will retry in {delay} min (attempt {attempt + 1}/{len(RETRY_DELAYS_MIN)})', flush=True)
+    scheduler.add_job(_retry_one_truck, 'date', run_date=run_at,
+                       args=[vno, label], id=f'retry_{vno}_{run_at.timestamp()}',
+                       misfire_grace_time=300)
+
+def _retry_one_truck(vno, label):
+    print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Retrying {label} ping for {vno}...', flush=True)
+    _ping_one_truck(vno, label)
+
 def ping_enroute():
     # First sync fresh trip list from Zoho, then ping FASTag for each connected truck
     sync_enroute_trips()
-    con = get_db(); cur = con.cursor()
-    # Always ping all connected trucks (is_connected=1), not just Zoho enroute list
-    # — Zoho may clear trips after delivery, leaving fetched_at stuck otherwise
-    cur.execute('SELECT vehicle_no FROM trucks WHERE is_connected=1')
-    trucks = [r[0] for r in cur.fetchall()]
-    con.close()
+    try:
+        con = get_db(); cur = con.cursor()
+        # Always ping all connected trucks (is_connected=1), not just Zoho enroute list
+        # — Zoho may clear trips after delivery, leaving fetched_at stuck otherwise
+        cur.execute('SELECT vehicle_no FROM trucks WHERE is_connected=1')
+        trucks = [r[0] for r in cur.fetchall()]
+        con.close()
+    except Exception as e:
+        # Previously unguarded — a single DB hiccup here used to silently
+        # skip every truck for the whole hour with no sign anything failed.
+        print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping enroute: could not read truck list — {e}', flush=True)
+        return
     print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping enroute: {len(trucks)} trucks...', flush=True)
     for vno in trucks:
-        try:
-            records = fetch_zoho(vno)
-            new_rows = save_crossings(vno, records)
-            print(f'  ✓ {vno} — {len(records)} crossings ({new_rows} new)', flush=True)
-        except Exception as e:
-            print(f'  ✗ {vno} — ERROR: {e}', flush=True)
+        _ping_one_truck(vno, 'enroute')
         time.sleep(3)
     check_trip_completion()
     print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping enroute complete.', flush=True)
@@ -1120,18 +1177,17 @@ def ping_sims():
 def ping_credit():
     # First sync fresh trip list from Zoho, then ping FASTag for each truck
     sync_credit_trips()
-    con = get_db(); cur = con.cursor()
-    cur.execute('SELECT DISTINCT truck_no FROM credit_trips')
-    trucks = [r[0] for r in cur.fetchall()]
-    con.close()
+    try:
+        con = get_db(); cur = con.cursor()
+        cur.execute('SELECT DISTINCT truck_no FROM credit_trips')
+        trucks = [r[0] for r in cur.fetchall()]
+        con.close()
+    except Exception as e:
+        print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping credit: could not read truck list — {e}', flush=True)
+        return
     print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping credit: {len(trucks)} trucks...', flush=True)
     for vno in trucks:
-        try:
-            records = fetch_zoho(vno)
-            new_rows = save_crossings(vno, records)
-            print(f'  ✓ {vno} — {len(records)} crossings ({new_rows} new)', flush=True)
-        except Exception as e:
-            print(f'  ✗ {vno} — ERROR: {e}', flush=True)
+        _ping_one_truck(vno, 'credit')
         time.sleep(3)
     print(f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] Ping credit complete.', flush=True)
 

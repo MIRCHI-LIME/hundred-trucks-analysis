@@ -116,6 +116,18 @@
     @media (prefers-reduced-motion: reduce) { .truck-mk .halo { animation:none; opacity:0.28; } }
     @keyframes lrPulse { 0%{box-shadow:0 0 0 0 rgba(0,0,0,0.35)} 70%{box-shadow:0 0 0 8px rgba(0,0,0,0)} 100%{box-shadow:0 0 0 0 rgba(0,0,0,0)} }
 
+    .zoho-status {
+      display:flex; align-items:center; gap:8px; padding:6px 14px; border-radius:999px;
+      background: var(--ml-bg); border:1px solid var(--ml-border);
+      font-size:12px; font-weight:700; color: var(--ml-muted); flex-shrink:0; margin:0 10px;
+      max-width:200px;
+    }
+    .zoho-status span:last-child { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .zoho-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+    .zoho-dot.up   { background:#2ecc71; animation: pulse 1.5s infinite; }
+    .zoho-dot.down { background:#e74c3c; }
+    .zoho-status.down { color:#c0392b; border-color:#e7b3ac; }
+
     .truck-list { flex:1; overflow-y:auto; }
     .truck-item { padding:14px 20px; border-bottom:1px solid var(--ml-hairline-3); cursor:pointer; transition:background 0.15s; }
     .truck-item:hover { background: var(--ml-bg); }
@@ -245,6 +257,10 @@
     <button class="ml-tab"        id="btn-liveroutes" onclick="showView('liveroutes')">Live Routes</button>
     <button class="ml-tab"        id="btn-credittrips" onclick="showView('credittrips')">Credit Trips</button>
     <button class="ml-tab"        id="btn-driversims"  onclick="showView('driversims')">Driver SIMs</button>
+  </div>
+  <div class="zoho-status" id="zohoStatus" title="Zoho FASTag API health">
+    <span class="zoho-dot up" id="zohoDot"></span>
+    <span id="zohoText">Zoho API is up</span>
   </div>
   <button class="ml-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
     <span class="ml-toggle-thumb"></span>
@@ -2058,6 +2074,34 @@ function toggleTheme() {
   document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('ml-credit-theme', next);
 }
+
+// ════════════════════════════════════════
+// ZOHO API HEALTH — green when healthy, red with a live retry countdown
+// when the auto-retry system (wsgi.py) is currently working through failures
+// ════════════════════════════════════════
+async function loadZohoStatus() {
+  try {
+    const res  = await fetch(`${API}/api/zoho-status`);
+    const data = await res.json();
+    const dot  = document.getElementById('zohoDot');
+    const text = document.getElementById('zohoText');
+    const box  = document.getElementById('zohoStatus');
+    if (data.status === 'up') {
+      dot.className  = 'zoho-dot up';
+      text.textContent = 'Zoho API is up';
+      box.classList.remove('down');
+      box.title = 'Zoho FASTag API is responding normally';
+    } else {
+      dot.className  = 'zoho-dot down';
+      const mins = data.next_retry_in_min;
+      text.textContent = `Zoho down — retry ${mins}m`;
+      box.classList.add('down');
+      box.title = `Affected: ${(data.failing_trucks||[]).join(', ')}\nLast error: ${data.last_error||''}`;
+    }
+  } catch (e) { /* dashboard's own network hiccup — leave last known state on screen */ }
+}
+loadZohoStatus();
+setInterval(loadZohoStatus, 30 * 1000);
 
 // ════════════════════════════════════════
 // INIT
