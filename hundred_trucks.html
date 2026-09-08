@@ -672,12 +672,14 @@ const simFmt = dt => new Date(String(dt||'').replace(' ','T')+'+05:30')
 // ════════════════════════════════════════
 async function loadTrucks() {
   try {
-    const [trucksRes, creditRes] = await Promise.all([
+    const [trucksRes, creditRes, plazasRes] = await Promise.all([
       fetch(`${API}/api/hundred-trucks`),
-      fetch(`${API}/api/credit-trips`)
+      fetch(`${API}/api/credit-trips`),
+      fetch(`${API}/api/hundred-plazas`)
     ]);
     const trucksData = await trucksRes.json();
     const creditData = await creditRes.json();
+    const plazasData = await plazasRes.json();
     allTrucks       = trucksData.trucks || [];
     allCreditTrucks = (creditData.result?.data || []).map(t => ({
       truck_no: t.truck_no,
@@ -688,9 +690,10 @@ async function loadTrucks() {
     creditTruckNos    = new Set(allCreditTrucks.map(t => t.truck_no));
     _trucksReadyResolve();
     const activeTruckCount = connectedTruckNos.size + creditTruckNos.size;
-    const totalPlazas = allTrucks
-      .filter(t => connectedTruckNos.has(t.vehicle_no) || creditTruckNos.has(t.vehicle_no))
-      .reduce((sum, t) => sum + (t.unique_plazas || 0), 0);
+    // Distinct plazas actually crossed — was previously a sum of each truck's own
+    // plaza count, which double-counted any plaza shared by more than one truck
+    // and disagreed with the Plaza Report panel's honest distinct count.
+    const totalPlazas = (plazasData.plazas || []).length;
     document.getElementById('stat-trucks').textContent = activeTruckCount;
     document.getElementById('stat-plazas').textContent = totalPlazas || '—';
     const rptTrucks = document.getElementById('rpt-total-trucks');
