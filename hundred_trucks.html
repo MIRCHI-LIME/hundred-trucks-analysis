@@ -1830,12 +1830,14 @@ async function updateSlider() {
     trucks = data.trucks || [];
   }
 
-  const visibleCount = trucks.filter(t => connectedTruckNos.has(t.vehicle_no) || creditTruckNos.has(t.vehicle_no)).length;
-  document.getElementById('slider-trucks-count').textContent = `${visibleCount} trucks visible`;
+  const relevantTrucks = trucks.filter(t => connectedTruckNos.has(t.vehicle_no) || creditTruckNos.has(t.vehicle_no));
+  document.getElementById('slider-trucks-count').textContent = `${relevantTrucks.length} trucks visible`;
 
   // update right panel list — click a truck to zoom to its marker, double-click to
-  // zoom back out to all trucks (same behaviour as the default Trucks layer list)
-  document.getElementById('rpt-truck-list').innerHTML = trucks.slice(0, 15).map(t => {
+  // zoom back out to all trucks (same behaviour as the default Trucks layer list).
+  // Must use the same connected/credit filter as the marker loop below — otherwise
+  // this can list a truck that never gets a marker, so clicking it does nothing.
+  document.getElementById('rpt-truck-list').innerHTML = relevantTrucks.slice(0, 15).map(t => {
     const hasPos = !!(t.lat && t.lng);
     return `<div onclick="focusTruckOnMap('${t.vehicle_no}')" ondblclick="resetTruckMapView()"
       title="${hasPos ? 'Click to see live location · double-click to go back to all trucks' : 'No position at this time'}"
@@ -2784,10 +2786,9 @@ function lrDrawMarkers(truckData, filterVno) {
         iconAnchor: [26, 17], iconSize: [52, 34],
       })
     }).addTo(liveRoutesMap);
+    lrDiamondMarker.bindPopup(`<div style="font-size:12px;line-height:1.8;min-width:170px;">${popupHtml}</div>`);
     if (group.trucks.length === 1) {
       lrDiamondMarker.on('click', () => lrFilterTruck(group.trucks[0].truck.vehicle_no));
-    } else {
-      lrDiamondMarker.bindPopup(`<div style="font-size:12px;line-height:1.8;min-width:170px;">${popupHtml}</div>`);
     }
   }
 
@@ -3201,6 +3202,7 @@ function ctDrawMarkers(truckData, filterVno) {
       icon: L.divIcon({ className:'', html: truckMarkerHtml(ctLead.color, ctLead.heading, group.trucks.length),
                         iconAnchor:[26,17], iconSize:[52,34] })
     }).addTo(ctMap);
+    ctDiamondMarker.bindPopup(`<div style="font-size:12px;line-height:1.8;min-width:160px;">${popupHtml}</div>`);
     if (group.trucks.length === 1) {
       ctDiamondMarker.on('click', () => ctFilterTruck(group.trucks[0].trip.truck_no));
     } else {
@@ -3223,7 +3225,6 @@ function ctDrawMarkers(truckData, filterVno) {
           if (ctLastData) ctDrawMarkers(ctLastData, vnos);
         }
       });
-      ctDiamondMarker.bindPopup(`<div style="font-size:12px;line-height:1.8;min-width:160px;">${popupHtml}</div>`);
     }
     allBounds.push(group.coord);
   }
