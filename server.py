@@ -549,7 +549,11 @@ def fetch_zoho(vehicle_no):
     body = json.dumps({'vehicle_no': vehicle_no}).encode()
     req  = urllib.request.Request(FASTAG_URL, data=body, headers={'Content-Type': 'application/json'})
     resp = urllib.request.urlopen(req, timeout=15)
-    return json.loads(resp.read()).get('result', {}).get('data', [])
+    data = json.loads(resp.read())
+    result = data.get('result', {})
+    if str(result.get('code')) != '200':
+        raise Exception(result.get('message', 'Zoho FASTag call failed'))
+    return result.get('data', [])
 
 def save_crossings(vehicle_no, records):
     """Insert new crossings (deduped on vehicle+plaza+time) and stamp fetched_at."""

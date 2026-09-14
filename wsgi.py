@@ -1015,7 +1015,14 @@ def fetch_zoho(vehicle_no):
     req  = urllib.request.Request(ZOHO_URL, data=body, headers={'Content-Type': 'application/json'})
     resp = urllib.request.urlopen(req, timeout=15)
     data = json.loads(resp.read())
-    return data.get('result', {}).get('data', [])
+    result = data.get('result', {})
+    # Zoho returns HTTP 200 even when the ULIP call it wraps failed — only
+    # result.status/code says whether this response is real. Without this
+    # check a ULIP outage looks identical to "0 crossings" and never raises,
+    # so /api/zoho-status stays 'up' the whole time.
+    if str(result.get('code')) != '200':
+        raise Exception(result.get('message', 'Zoho FASTag call failed'))
+    return result.get('data', [])
 
 def save_crossings(vehicle_no, records):
     con = get_db(); cur = con.cursor()
