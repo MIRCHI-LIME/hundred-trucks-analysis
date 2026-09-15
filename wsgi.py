@@ -355,6 +355,16 @@ def zoho_status():
         'last_error': last_error,
     })
 
+@application.route('/api/force-zoho-check')
+def force_zoho_check():
+    """
+    Runs the real hourly ping_enroute logic right now instead of waiting for the
+    next scheduled hour — so the status badge reflects reality immediately rather
+    than whatever it happened to catch last. Takes ~15-20s (one call per truck).
+    """
+    ping_enroute()
+    return zoho_status()
+
 @application.route('/api/make-token')
 def api_make_token():
     vno = request.args.get('vehicle_no', '').strip().upper()
