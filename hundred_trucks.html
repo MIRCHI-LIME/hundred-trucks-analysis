@@ -2137,10 +2137,13 @@ async function loadZohoStatus() {
       box.title = 'Zoho FASTag API is responding normally';
     } else {
       dot.className  = 'zoho-dot down';
-      const mins = data.next_retry_in_min;
-      text.textContent = `Zoho down — retry ${mins}m`;
+      // next_retry_in_min is null once the 15/30/60 timer is exhausted — the truck
+      // is still down, just waiting on the next hourly ping rather than a timer
+      text.textContent = (data.next_retry_in_min != null)
+        ? `Zoho down — retry ${data.next_retry_in_min}m`
+        : `Zoho down — ${data.down_for_min}m`;
       box.classList.add('down');
-      box.title = `Affected: ${(data.failing_trucks||[]).join(', ')}\nLast error: ${data.last_error||''}`;
+      box.title = `Down for ${data.down_for_min} min\nAffected: ${(data.failing_trucks||[]).join(', ')}\nLast error: ${data.last_error||''}`;
     }
   } catch (e) { /* dashboard's own network hiccup — leave last known state on screen */ }
 }

@@ -332,17 +332,26 @@ def keep_alive():
 
 @application.route('/api/zoho-status')
 def zoho_status():
-    """Driven by the same _retry_attempts the auto-retry system uses — see ping_enroute."""
-    if not _retry_attempts:
+    """
+    Driven by _zoho_failures, not _retry_attempts — a truck stays 'down' here for
+    the whole outage, even once its 15/30/60 min retries are exhausted and there's
+    nothing left scheduled. Only an actual successful ping clears it (see
+    _ping_one_truck), so this can't flip back to 'up' just because retrying stopped.
+    """
+    if not _zoho_failures:
         return jsonify({'status': 'up'})
     now = datetime.datetime.now()
-    soonest = min(s['next_retry_at'] for s in _retry_attempts.values())
-    mins_left = max(0, round((soonest - now).total_seconds() / 60))
-    last_error = next(iter(_retry_attempts.values()))['error']
+    down_for_min = round((now - min(s['since'] for s in _zoho_failures.values())).total_seconds() / 60)
+    last_error   = next(iter(_zoho_failures.values()))['error']
+    # only trucks still in the 15/30/60 timer have a concrete next attempt — once
+    # exhausted, the truck simply waits for the next scheduled hourly ping instead
+    still_retrying = [s['next_retry_at'] for v, s in _retry_attempts.items() if v in _zoho_failures]
+    next_retry_in_min = max(0, round((min(still_retrying) - now).total_seconds() / 60)) if still_retrying else None
     return jsonify({
         'status': 'down',
-        'failing_trucks': list(_retry_attempts.keys()),
-        'next_retry_in_min': mins_left,
+        'failing_trucks': list(_zoho_failures.keys()),
+        'down_for_min': down_for_min,
+        'next_retry_in_min': next_retry_in_min,
         'last_error': last_error,
     })
 
@@ -1123,7 +1132,10 @@ def check_trip_completion():
 # are per-truck (a real Zoho outage fails every truck, so they all end up
 # retried anyway; a single truck's own hiccup no longer has to wait an hour).
 RETRY_DELAYS_MIN = [15, 30, 60]
-_retry_attempts = {}   # vehicle_no -> {'attempt', 'error', 'next_retry_at'} — also drives /api/zoho-status
+_retry_attempts = {}   # vehicle_no -> {'attempt', 'error', 'next_retry_at'} — drives the 15/30/60 timer
+_zoho_failures  = {}   # vehicle_no -> {'error', 'since'} — drives /api/zoho-status; only cleared on success,
+                        # so a long outage stays reported as 'down' even after retries are exhausted and
+                        # the 15/30/60 timer above has nothing left scheduled
 
 def _ping_one_truck(vno, label):
     """Fetch + save one truck's crossings, scheduling a retry on failure."""
@@ -1132,8 +1144,13 @@ def _ping_one_truck(vno, label):
         new_rows = save_crossings(vno, records)
         print(f'  ✓ {vno} — {len(records)} crossings ({new_rows} new)', flush=True)
         _retry_attempts.pop(vno, None)
+        _zoho_failures.pop(vno, None)
     except Exception as e:
         print(f'  ✗ {vno} — ERROR: {e}', flush=True)
+        if vno in _zoho_failures:
+            _zoho_failures[vno]['error'] = str(e)
+        else:
+            _zoho_failures[vno] = {'error': str(e), 'since': datetime.datetime.now()}
         _schedule_retry(vno, label, str(e))
 
 def _schedule_retry(vno, label, error=''):
