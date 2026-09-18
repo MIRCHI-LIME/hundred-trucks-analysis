@@ -551,7 +551,12 @@ def fetch_zoho(vehicle_no):
     resp = urllib.request.urlopen(req, timeout=15)
     data = json.loads(resp.read())
     result = data.get('result', {})
-    if str(result.get('code')) != '200':
+    code = str(result.get('code'))
+    # code 404 ("No FASTag transactions found (errCode: 740)") just means this
+    # truck has no crossings right now (e.g. an inactive FASTag) — not a failure.
+    if code == '404':
+        return []
+    if code != '200':
         raise Exception(result.get('message', 'Zoho FASTag call failed'))
     return result.get('data', [])
 

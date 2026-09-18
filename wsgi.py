@@ -1035,11 +1035,18 @@ def fetch_zoho(vehicle_no):
     resp = urllib.request.urlopen(req, timeout=15)
     data = json.loads(resp.read())
     result = data.get('result', {})
+    code = str(result.get('code'))
     # Zoho returns HTTP 200 even when the ULIP call it wraps failed — only
     # result.status/code says whether this response is real. Without this
     # check a ULIP outage looks identical to "0 crossings" and never raises,
     # so /api/zoho-status stays 'up' the whole time.
-    if str(result.get('code')) != '200':
+    # code 404 ("No FASTag transactions found (errCode: 740)") is not a
+    # failure — it just means this truck has no crossings right now (e.g. an
+    # inactive FASTag) — so it must not raise or it'll falsely mark a quiet
+    # truck as a ULIP outage.
+    if code == '404':
+        return []
+    if code != '200':
         raise Exception(result.get('message', 'Zoho FASTag call failed'))
     return result.get('data', [])
 
